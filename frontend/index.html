@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sketch-to-Cloud | AI Cloud Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg-color: #0f172a;
+            --surface: #1e293b;
+            --surface-hover: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--surface);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border);
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.75rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #818cf8, #c084fc);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        main {
+            flex: 1;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 2rem;
+        }
+
+        .panel {
+            background-color: var(--surface);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .upload-area {
+            border: 2px dashed var(--primary);
+            border-radius: 8px;
+            padding: 2rem 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-area:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .preview-img {
+            max-width: 100%;
+            border-radius: 8px;
+            display: none;
+            margin-bottom: 1rem;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: inherit;
+            width: 100%;
+        }
+
+        .btn:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            background-color: var(--surface-hover);
+            color: var(--text-secondary);
+            cursor: not-allowed;
+        }
+
+        .btn-success {
+            background-color: var(--success);
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background-color: #059669;
+        }
+
+        .btn-danger {
+            background-color: var(--error);
+        }
+
+        .btn-warning {
+            background-color: var(--warning);
+            color: #000;
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .btn-outline:hover:not(:disabled) {
+            background-color: var(--surface-hover);
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .card {
+            background-color: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .code-block {
+            background-color: #0a0f1d;
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #818cf8;
+            overflow: auto;
+            max-height: 400px;
+            white-space: pre;
+        }
+
+        .resource-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .status-badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-running {
+            background: var(--success);
+            color: white;
+        }
+
+        .cost-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.25rem;
+            font-size: 0.9rem;
+        }
+
+        .total-cost {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--success);
+            text-align: right;
+        }
+
+        .security-item {
+            border-left: 3px solid;
+            padding-left: 0.75rem;
+            font-size: 0.85rem;
+        }
+
+        .sec-High {
+            border-color: var(--error);
+        }
+
+        .sec-Medium {
+            border-color: var(--warning);
+        }
+
+        .sec-Low {
+            border-color: var(--success);
+        }
+
+        /* Incident Analysis */
+        #logInput {
+            width: 100%;
+            height: 100px;
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 6px;
+            padding: 0.5rem;
+            font-family: monospace;
+            resize: none;
+        }
+
+        /* Chat UI */
+        #chatBox {
+            height: 200px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+        }
+
+        .chat-msg {
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+            max-width: 85%;
+            font-size: 0.85rem;
+        }
+
+        .msg-ai {
+            align-self: flex-start;
+            background: var(--surface-hover);
+            color: var(--text-primary);
+        }
+
+        .msg-user {
+            align-self: flex-end;
+            background: var(--primary);
+            color: white;
+        }
+
+        /* Loading & States */
+        .loading {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 2rem;
+        }
+
+        .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(99, 102, 241, 0.1);
+            border-left-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #deploymentConsole {
+            background: black;
+            color: #10b981;
+            padding: 1rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+            height: 120px;
+            overflow-y: auto;
+            border-radius: 6px;
+            display: none;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Sketch-to-Cloud Dashboard</h1>
+    </header>
+
+    <main>
+        <!-- Sidebar: Upload, Incident, Chat -->
+        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <div class="panel">
+                <h2>1. 인프라 설계도 업로드</h2>
+                <div class="upload-area" id="dropZone">
+                    <div class="upload-icon">🖼️</div>
+                    <img id="imagePreview" class="preview-img">
+                    <p id="uploadText" style="color: var(--text-secondary); font-size: 0.85rem;">클릭하여 이미지 업로드</p>
+                    <input type="file" id="fileInput" accept="image/*">
+                </div>
+                <button id="analyzeBtn" class="btn" disabled>AI 분석 및 코드 생성</button>
+            </div>
+
+            <div class="panel">
+                <h2>2. AI 클라우드 컨설팅</h2>
+                <div id="chatBox">
+                    <div class="chat-msg msg-ai">안녕하세요! 무엇을 도와드릴까요?</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="text" id="chatInput" placeholder="질문을 입력하세요..."
+                        style="flex:1; background: #0f172a; border: 1px solid var(--border); color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem;">
+                    <button id="chatSendBtn" class="btn" style="width: auto;">Send</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>3. 장애 로그 분석 (SRE)</h2>
+                <textarea id="logInput" placeholder="여기에 서버 로그를 입력하세요..."></textarea>
+                <button id="analyzeLogsBtn" class="btn btn-outline">AI 로그 원인 분석</button>
+                <div id="logResult" style="display: none; font-size: 0.85rem;" class="card">
+                    <div id="logReason" style="font-weight: 700; color: var(--error);"></div>
+                    <div id="logSolution" style="margin-top: 0.5rem; color: var(--text-secondary);"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Workspace -->
+        <div class="panel" style="flex: 1;">
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">
+                <h2 style="border: none; padding: 0;">WORKBENCH & DEPLOYMENT</h2>
+                <button id="rollbackBtn" class="btn btn-warning"
+                    style="width: auto; padding: 0.4rem 1rem; font-size: 0.8rem;">⏪ 어제로 돌려줘 (Rollback)</button>
+            </div>
+
+            <div id="emptyState" style="text-align: center; color: var(--text-secondary); padding: 5rem;">
+                <p>설계도를 업로드하면 AI 비서가 작업을 시작합니다.</p>
+            </div>
+
+            <div class="loading" id="globalLoading">
+                <div class="spinner"></div>
+                <p id="loadingMsg">AI가 작업 중입니다...</p>
+            </div>
+
+            <div id="workspace" style="display: none; flex-direction: column; gap: 1.5rem;">
+                <div class="results-grid">
+                    <div class="card">
+                        <h3 style="margin:0; font-size: 0.9rem;">✨ AI 아키텍처 해석</h3>
+                        <p id="aiExplanation"
+                            style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;"></p>
+                    </div>
+                    <div class="card">
+                        <h3 style="margin:0; font-size: 0.9rem;">💰 예상 월 비용 명세</h3>
+                        <div id="costList"></div>
+                        <div class="total-cost" id="totalCost"></div>
+                    </div>
+                </div>
+
+                <div class="results-grid">
+                    <div class="card">
+                        <h3 style="margin:0; font-size: 0.9rem;">🛡️ 보안 취약점 점검</h3>
+                        <div id="securityList" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+                    </div>
+                    <div class="card">
+                        <div style="display: flex; justify-content: space-between;">
+                            <h3 style="margin:0; font-size: 0.9rem;">🖥️ 현재 로컬 인프라 상태</h3>
+                            <button id="refreshStatusBtn"
+                                style="background: none; border: none; color: var(--primary); cursor: pointer; font-size: 0.8rem;">🔄
+                                Refresh</button>
+                        </div>
+                        <div id="resourceStatus" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <p style="font-size: 0.8rem; color: var(--text-secondary);">인프라가 배포되면 여기에 표시됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin:0; font-size: 0.9rem;">🛠️ 생성된 Terraform 코드</h3>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button id="saveBtn" class="btn btn-outline"
+                                style="width: auto; padding: 0.4rem 1rem; font-size: 0.8rem;">Save Code</button>
+                            <button id="deployBtn" class="btn btn-success"
+                                style="width: auto; padding: 0.4rem 1rem; font-size: 0.8rem;">Deploy to
+                                LocalStack</button>
+                        </div>
+                    </div>
+                    <div class="code-block" id="tfCode"></div>
+                </div>
+
+                <div id="deploymentConsole"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const state = { currentCode: "", context: "" };
+        const els = {
+            dropZone: document.getElementById('dropZone'),
+            fileInput: document.getElementById('fileInput'),
+            imagePreview: document.getElementById('imagePreview'),
+            analyzeBtn: document.getElementById('analyzeBtn'),
+            workspace: document.getElementById('workspace'),
+            emptyState: document.getElementById('emptyState'),
+            loading: document.getElementById('globalLoading'),
+            loadingMsg: document.getElementById('loadingMsg'),
+            console: document.getElementById('deploymentConsole'),
+            chatBox: document.getElementById('chatBox'),
+            chatInput: document.getElementById('chatInput'),
+            chatSendBtn: document.getElementById('chatSendBtn'),
+            resourceStatus: document.getElementById('resourceStatus')
+        };
+
+        // UI Helpers
+        const showLoading = (msg) => {
+            els.loadingMsg.textContent = msg;
+            els.loading.style.display = 'flex';
+            els.workspace.style.display = 'none';
+            els.emptyState.style.display = 'none';
+        };
+
+        const updateStatus = async () => {
+            try {
+                const resp = await fetch('/api/v1/diagram/resources');
+                const data = await resp.json();
+                if (data.resources && data.resources.length > 0) {
+                    els.resourceStatus.innerHTML = data.resources.map(r => `
+                        <div class="resource-item">
+                            <span>${r.id} (${r.type})</span>
+                            <span class="status-badge status-running">${r.status}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    els.resourceStatus.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-secondary);">배포된 리소스가 없습니다.</p>';
+                }
+            } catch (e) { }
+        };
+
+        // 1. Analyze Diagram
+        els.dropZone.onclick = () => els.fileInput.click();
+        els.fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    els.imagePreview.src = ev.target.result;
+                    els.imagePreview.style.display = 'block';
+                    document.getElementById('uploadText').style.display = 'none';
+                    els.analyzeBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        els.analyzeBtn.onclick = async () => {
+            const formData = new FormData();
+            formData.append('file', els.fileInput.files[0]);
+            showLoading("AI가 아키텍처를 분석하고 있습니다...");
+            try {
+                const resp = await fetch('/api/v1/diagram/analyze', { method: 'POST', body: formData });
+                const data = await resp.json();
+                state.currentCode = data.terraform_code;
+                state.context = data.explanation;
+                document.getElementById('aiExplanation').textContent = data.explanation;
+                document.getElementById('tfCode').textContent = data.terraform_code;
+                document.getElementById('costList').innerHTML = data.cost_estimates.map(c => `
+                    <div class="cost-row"><span>${c.resource_type}</span><span>$${c.estimated_monthly_cost}</span></div>
+                `).join('');
+                document.getElementById('totalCost').textContent = `$${data.total_estimated_cost.toFixed(2)} / mo`;
+                document.getElementById('securityList').innerHTML = data.security_vulnerabilities.map(s => `
+                    <div class="security-item sec-${s.severity}">
+                        <strong>[${s.severity}] ${s.issue}</strong><br>${s.recommendation}
+                    </div>
+                `).join('') || '<p style="color:var(--success)">이슈 없음</p>';
+                els.loading.style.display = 'none';
+                els.workspace.style.display = 'flex';
+                updateStatus();
+            } catch (err) {
+                alert("분석 실패"); els.loading.style.display = 'none'; els.emptyState.style.display = 'block';
+            }
+        };
+
+        // 2. Deployment & Rollback
+        document.getElementById('deployBtn').onclick = async () => {
+            els.console.style.display = 'block';
+            els.console.textContent = "> Deploying to LocalStack...\n";
+            try {
+                await fetch('/api/v1/diagram/save-terraform', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tf_code: state.currentCode })
+                });
+                const resp = await fetch('/api/v1/diagram/deploy', { method: 'POST' });
+                const res = await resp.json();
+                els.console.textContent += res.success ? res.output : res.error;
+                updateStatus();
+            } catch (err) { els.console.textContent += "\n[ERROR] Deployment failed."; }
+        };
+
+        document.getElementById('rollbackBtn').onclick = async () => {
+            if (!confirm("이전 인프라 상태로 복구 하시겠습니까?")) return;
+            showLoading("이전 상태로 복구 중...");
+            try {
+                const resp = await fetch('/api/v1/diagram/rollback', { method: 'POST' });
+                const res = await resp.json();
+                alert(res.success ? "복구 완료!" : "복구 실패: " + res.error);
+                updateStatus();
+            } finally { els.loading.style.display = 'none'; els.workspace.style.display = 'flex'; }
+        };
+
+        // 3. Chat & Logs
+        els.chatSendBtn.onclick = async () => {
+            const msg = els.chatInput.value.trim(); if (!msg) return;
+            const userMsg = document.createElement('div'); userMsg.className = 'chat-msg msg-user';
+            userMsg.textContent = msg; els.chatBox.appendChild(userMsg);
+            els.chatInput.value = "";
+            try {
+                const resp = await fetch('/api/v1/diagram/chat', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg, current_context: state.context })
+                });
+                const data = await resp.json();
+                const aiMsg = document.createElement('div'); aiMsg.className = 'chat-msg msg-ai';
+                aiMsg.textContent = data.reply; els.chatBox.appendChild(aiMsg);
+            } catch (e) { }
+            els.chatBox.scrollTop = els.chatBox.scrollHeight;
+        };
+
+        document.getElementById('analyzeLogsBtn').onclick = async () => {
+            const logs = document.getElementById('logInput').value; if (!logs) return;
+            try {
+                const resp = await fetch('/api/v1/diagram/logs/analyze', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ logs: logs })
+                });
+                const data = await resp.json();
+                document.getElementById('logReason').textContent = `원인: ${data.error_reason}`;
+                document.getElementById('logSolution').textContent = `해결책: ${data.solution}`;
+                document.getElementById('logResult').style.display = 'block';
+            } catch (e) { }
+        };
+
+        document.getElementById('refreshStatusBtn').onclick = updateStatus;
+        document.getElementById('saveBtn').onclick = () => alert("Saved!");
+
+    </script>
+</body>
+
+</html>
