@@ -25,6 +25,40 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    projects: Mapped[list[Project]] = relationship(back_populates="owner")
+    auth_identities: Mapped[list[AuthIdentity]] = relationship(back_populates="user")
+    auth_sessions: Mapped[list[AuthSession]] = relationship(back_populates="user")
+
+
+class AuthIdentity(Base):
+    __tablename__ = "auth_identities"
+    __table_args__ = (UniqueConstraint("provider", "provider_user_id", name="uq_auth_identities_provider_user"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(30))
+    provider_user_id: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="auth_identities")
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    refresh_token_hash: Mapped[str] = mapped_column(String(255))
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="auth_sessions")
+
 
 class Project(Base):
     __tablename__ = "projects"
@@ -37,6 +71,7 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     sessions: Mapped[list[AppSession]] = relationship(back_populates="project")
+    owner: Mapped[User | None] = relationship(back_populates="projects")
 
 
 class AppSession(Base):
@@ -59,6 +94,7 @@ class AppSession(Base):
     architecture: Mapped[SessionArchitecture | None] = relationship(back_populates="session", uselist=False)
     terraform_result: Mapped[SessionTerraformResult | None] = relationship(back_populates="session", uselist=False)
     cost_result: Mapped[SessionCostResult | None] = relationship(back_populates="session", uselist=False)
+    events: Mapped[list[SessionEvent]] = relationship(back_populates="session")
 
 
 class SessionArchitecture(Base):
@@ -105,3 +141,15 @@ class SessionCostResult(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     session: Mapped[AppSession] = relationship(back_populates="cost_result")
+
+
+class SessionEvent(Base):
+    __tablename__ = "session_events"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    session_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(String(40))
+    payload_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    session: Mapped[AppSession] = relationship(back_populates="events")
