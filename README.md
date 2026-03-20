@@ -189,7 +189,7 @@ AI를 활용하여 다음과 같은 흐름을 제공합니다:
 
 ## Frontend
 
-- React
+- React / vite
 - Tailwind CSS
 - React Flow (다이어그램 시각화)
 
