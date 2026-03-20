@@ -21,10 +21,20 @@ CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     version_no INT NOT NULL CHECK (version_no > 0),
-    input_type VARCHAR(20) NOT NULL DEFAULT 'text' CHECK (input_type IN ('text', 'sketch', 'text_with_sketch')),
+    input_type VARCHAR(20) NOT NULL DEFAULT 'TEXT' CHECK (input_type IN ('TEXT', 'SKETCH', 'TEXT_WITH_SKETCH')),
     input_text TEXT,
     input_image_url TEXT,
-    status VARCHAR(30) NOT NULL CHECK (status IN ('created', 'analyzing', 'generated', 'failed')),
+    status VARCHAR(30) NOT NULL CHECK (
+        status IN (
+            'CREATED',
+            'ANALYZING',
+            'ANALYZED',
+            'GENERATING_TERRAFORM',
+            'GENERATED',
+            'COST_CALCULATED',
+            'FAILED'
+        )
+    ),
     error_code VARCHAR(50),
     error_message TEXT,
     contract_version VARCHAR(20) NOT NULL DEFAULT 'v1' CHECK (contract_version = 'v1'),
