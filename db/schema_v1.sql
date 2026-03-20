@@ -1,8 +1,5 @@
--- Sketch-to-Cloud PostgreSQL schema
--- Aligned with:
--- - 서비스_파이프라인_초안.md
--- - API_스키마계약_v1.md (contract_version = v2)
--- - timestamps stored in timestamptz
+-- Sketch-to-Cloud PostgreSQL schema v1
+-- Source of truth: 서비스_파이프라인_초안.md
 
 BEGIN;
 
@@ -53,7 +50,8 @@ CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- Auth 파이프라인 연결 전까지 nullable 허용. 추후 NOT NULL 전환.
+    owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -66,7 +64,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     version_no INT NOT NULL CHECK (version_no > 0),
     input_type VARCHAR(20) NOT NULL DEFAULT 'TEXT'
         CHECK (input_type IN ('TEXT', 'SKETCH', 'TEXT_WITH_SKETCH')),
-    input_type VARCHAR(20) NOT NULL DEFAULT 'TEXT' CHECK (input_type IN ('TEXT', 'SKETCH', 'TEXT_WITH_SKETCH')),
     input_text TEXT,
     input_image_url TEXT,
     status VARCHAR(30) NOT NULL DEFAULT 'CREATED'
@@ -79,17 +76,6 @@ CREATE TABLE IF NOT EXISTS sessions (
             'COST_CALCULATED',
             'FAILED'
         )),
-    status VARCHAR(30) NOT NULL CHECK (
-        status IN (
-            'CREATED',
-            'ANALYZING',
-            'ANALYZED',
-            'GENERATING_TERRAFORM',
-            'GENERATED',
-            'COST_CALCULATED',
-            'FAILED'
-        )
-    ),
     error_code VARCHAR(50),
     error_message TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -145,3 +131,4 @@ CREATE INDEX IF NOT EXISTS idx_session_events_session_id ON session_events(sessi
 CREATE INDEX IF NOT EXISTS idx_session_events_event_type ON session_events(event_type);
 
 COMMIT;
+

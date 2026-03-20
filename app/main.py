@@ -169,7 +169,6 @@ def create_project_session(
         input_text=payload.inputText,
         input_image_url=payload.inputImageUrl,
         status="CREATED",
-        contract_version=CONTRACT_VERSION,
     )
     db.add(session)
     db.commit()
@@ -421,7 +420,6 @@ def create_session(payload: SessionCreateRequest, db: Session = Depends(get_db))
         input_type="TEXT",
         input_text="",
         status="CREATED",
-        contract_version=CONTRACT_VERSION,
     )
     db.add(session)
     db.commit()
