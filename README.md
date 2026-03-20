@@ -195,7 +195,7 @@ AI를 활용하여 다음과 같은 흐름을 제공합니다:
 
 ## Backend
 
-- Spring Boot (Java)
+- Python (FastAPI)
 
 ## AI
 
