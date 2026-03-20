@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sketch-to-cloud.local/schema/architecture-v1.json",
+  "title": "SketchToCloudArchitectureV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["vpc", "ec2", "rds", "public", "region"],
+  "properties": {
+    "vpc": {
+      "type": "boolean",
+      "description": "MVP에서는 항상 true 권장"
+    },
+    "ec2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "instance_type"],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "instance_type": {
+          "type": "string",
+          "enum": ["t3.micro", "t3.small", "t3.medium"]
+        }
+      }
+    },
+    "rds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "engine"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "engine": {
+          "type": ["string", "null"],
+          "enum": ["mysql", "postgres", null]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "properties": {
+              "engine": {
+                "type": "string",
+                "enum": ["mysql", "postgres"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "enabled": { "const": false } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "properties": {
+              "engine": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "public": {
+      "type": "boolean"
+    },
+    "region": {
+      "type": "string",
+      "enum": [
+        "ap-northeast-2",
+        "ap-northeast-1",
+        "ap-southeast-1",
+        "us-east-1",
+        "us-east-2"
+      ]
+    }
+  },
+  "examples": [
+    {
+      "vpc": true,
+      "ec2": {
+        "count": 2,
+        "instance_type": "t3.micro"
+      },
+      "rds": {
+        "enabled": true,
+        "engine": "mysql"
+      },
+      "public": true,
+      "region": "ap-northeast-2"
+    }
+  ]
+}
+

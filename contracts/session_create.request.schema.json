@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sketch-to-cloud.local/schema/session-create-request-v1.json",
+  "title": "SessionCreateRequestV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project_id"],
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    }
+  }
+}
+

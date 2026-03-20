@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sketch-to-cloud.local/schema/session-response-v1.json",
+  "title": "SessionResponseV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_id",
+    "project_id",
+    "status",
+    "input_text",
+    "parsed_json",
+    "error",
+    "created_at",
+    "updated_at",
+    "contract_version"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["created", "analyzing", "generated", "failed"]
+    },
+    "input_text": {
+      "type": "string"
+    },
+    "parsed_json": {
+      "oneOf": [
+        {
+          "$ref": "../A_JSON_스키마_v1.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": ["PARSE_ERROR", "SCHEMA_ERROR", "TIMEOUT_ERROR", "INTERNAL_ERROR"]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "contract_version": {
+      "type": "string",
+      "const": "v1"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "generated" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "parsed_json": {
+            "$ref": "../A_JSON_스키마_v1.json"
+          },
+          "error": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "failed" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": ["PARSE_ERROR", "SCHEMA_ERROR", "TIMEOUT_ERROR", "INTERNAL_ERROR"]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+
