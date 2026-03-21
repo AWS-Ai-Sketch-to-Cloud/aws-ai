@@ -1,5 +1,6 @@
 param(
-    [string]$BaseUrl = "http://127.0.0.1:8000"
+    [string]$BaseUrl = "http://127.0.0.1:8000",
+    [switch]$RequireTerraformPassed
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,6 +30,9 @@ Write-Host "analyzeStatus=$($analyze.status)"
 Write-Host "4) Generate terraform"
 $terraform = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions/$sessionId/terraform"
 Write-Host "terraformStatus=$($terraform.status) validation=$($terraform.validationStatus)"
+if ($RequireTerraformPassed -and $terraform.validationStatus -ne "PASSED") {
+    throw "Expected validationStatus=PASSED, but got '$($terraform.validationStatus)'. output=$($terraform.validationOutput)"
+}
 
 Write-Host "5) Calculate cost"
 $cost = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions/$sessionId/cost"
@@ -41,4 +45,6 @@ Write-Host "detailStatus=$($detail.status) hasArchitecture=$($null -ne $detail.a
 Write-Host "7) List sessions in project"
 $list = Invoke-RestMethod -Method Get -Uri "$BaseUrl/api/projects/$projectId/sessions"
 Write-Host "sessionsCount=$($list.Count) latestStatus=$($list[0].status)"
+
+Write-Host "Smoke test passed."
 
