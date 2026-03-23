@@ -13,7 +13,10 @@ if str(ROOT) not in sys.path:
 from app.ai_parser import AIParseError, parse_architecture_with_retry
 
 SCHEMA_PATH = ROOT / "A_JSON_스키마_v1.json"
-TESTSET_PATH = ROOT / "A_입력테스트셋_v1.md"
+DEFAULT_TESTSET_PATHS = [
+    ROOT / "A_입력테스트셋_v1.md",
+    ROOT / "A_입력테스트셋_v2.md",
+]
 
 
 def load_schema() -> dict[str, Any]:
@@ -34,6 +37,22 @@ def parse_testset(markdown: str) -> list[dict[str, Any]]:
     return cases
 
 
+def load_cases_from_files(paths: list[Path]) -> list[dict[str, Any]]:
+    all_cases: list[dict[str, Any]] = []
+    running_id = 1
+    for path in paths:
+        if not path.exists():
+            continue
+        markdown = path.read_text(encoding="utf-8")
+        cases = parse_testset(markdown)
+        for case in cases:
+            case["id"] = running_id
+            case["source"] = path.name
+            running_id += 1
+            all_cases.append(case)
+    return all_cases
+
+
 def compare(expected: dict[str, Any], actual: dict[str, Any]) -> tuple[bool, list[str]]:
     diffs: list[str] = []
     keys = sorted(set(expected.keys()) | set(actual.keys()))
@@ -45,10 +64,9 @@ def compare(expected: dict[str, Any], actual: dict[str, Any]) -> tuple[bool, lis
 
 def main() -> None:
     schema = load_schema()
-    markdown = TESTSET_PATH.read_text(encoding="utf-8")
-    cases = parse_testset(markdown)
+    cases = load_cases_from_files(DEFAULT_TESTSET_PATHS)
     if not cases:
-        raise RuntimeError("no test cases parsed from A_입력테스트셋_v1.md")
+        raise RuntimeError("no test cases parsed from input testset files")
 
     success = 0
     failed_cases: list[dict[str, Any]] = []
@@ -64,6 +82,7 @@ def main() -> None:
                 failed_cases.append(
                     {
                         "id": case["id"],
+                        "source": case.get("source"),
                         "input": case["input"],
                         "reason": "MISMATCH",
                         "diffs": diffs,
@@ -72,13 +91,22 @@ def main() -> None:
                 )
                 error_stats["MISMATCH"] = error_stats.get("MISMATCH", 0) + 1
         except AIParseError as e:
-            failed_cases.append({"id": case["id"], "input": case["input"], "reason": e.code, "message": e.message})
+            failed_cases.append(
+                {
+                    "id": case["id"],
+                    "source": case.get("source"),
+                    "input": case["input"],
+                    "reason": e.code,
+                    "message": e.message,
+                }
+            )
             error_stats[e.code] = error_stats.get(e.code, 0) + 1
 
     total = len(cases)
     accuracy = (success / total) * 100
 
     print("=== A Parser Evaluation ===")
+    print("sources:", ", ".join(p.name for p in DEFAULT_TESTSET_PATHS if p.exists()))
     print(f"total: {total}")
     print(f"success: {success}")
     print(f"failed: {total - success}")
@@ -91,6 +119,8 @@ def main() -> None:
         print("=== Failed Cases ===")
         for case in failed_cases:
             print(f"[#{case['id']}] {case['reason']}")
+            if case.get("source"):
+                print(f"source: {case['source']}")
             print(f"input: {case['input']}")
             if "message" in case:
                 print(f"message: {case['message']}")
