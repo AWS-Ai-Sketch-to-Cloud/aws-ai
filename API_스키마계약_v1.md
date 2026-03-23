@@ -35,13 +35,14 @@
 ### 3-1) `POST /api/auth/register`
 
 설명:
-- 로컬 이메일/비밀번호 기반 회원가입
+- 로컬 `loginId`/비밀번호 기반 회원가입
 - `users`, `auth_identities`를 함께 생성
 
 요청 예시:
 
 ```json
 {
+  "loginId": "honggildong",
   "email": "user@example.com",
   "password": "plain-password",
   "displayName": "홍길동"
@@ -53,6 +54,7 @@
 ```json
 {
   "userId": "uuid",
+  "loginId": "honggildong",
   "email": "user@example.com",
   "displayName": "홍길동",
   "isActive": true,
@@ -64,13 +66,13 @@
 ### 3-2) `POST /api/auth/login`
 
 설명:
-- 로컬 로그인 성공 시 access token 발급, `auth_sessions`에 refresh token 해시 저장
+- 로컬 `loginId` 로그인 성공 시 access token 발급, `auth_sessions`에 refresh token 해시 저장
 
 요청 예시:
 
 ```json
 {
-  "email": "user@example.com",
+  "loginId": "honggildong",
   "password": "plain-password"
 }
 ```
@@ -81,6 +83,7 @@
 {
   "user": {
     "userId": "uuid",
+    "loginId": "honggildong",
     "email": "user@example.com",
     "displayName": "홍길동",
     "role": "USER"
@@ -109,6 +112,26 @@
 ```json
 {
   "success": true,
+  "contractVersion": "v2"
+}
+```
+
+### 3-4) `GET /api/users/me`
+
+설명:
+- 현재 로그인 사용자의 기본 계정 정보 조회
+
+응답 예시:
+
+```json
+{
+  "userId": "uuid",
+  "loginId": "honggildong",
+  "email": "user@example.com",
+  "displayName": "홍길동",
+  "isActive": true,
+  "role": "USER",
+  "lastLoginAt": "2026-03-23T09:00:00Z",
   "contractVersion": "v2"
 }
 ```
