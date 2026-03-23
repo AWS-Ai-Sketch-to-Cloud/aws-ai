@@ -1,79 +1,52 @@
-# API 스모크 테스트 (v1)
+# API 스모크 테스트 (v2)
 
 목적:
-- 팀원이 같은 순서로 백엔드 파이프라인 동작을 빠르게 확인
-- 흐름: `project -> session -> analyze -> terraform -> cost -> detail`
+- 팀원이 같은 순서로 v2 API 동작을 빠르게 확인
+- 흐름: `auth -> upload -> project -> session -> status -> architecture -> terraform -> cost -> detail -> logout`
 
 전제:
 - 서버 실행: `uvicorn app.main:app --reload`
-- `BEDROCK_ENABLED=false` 권장(비용 0)
 - 기본 주소: `http://127.0.0.1:8000`
+- DB에 `users.login_id` 컬럼이 반영되어 있어야 함
+  - 미반영 시 [schema_v1.sql](/c:/Users/junse/Desktop/vscode/team-project/aws-ai/backend/db/schema_v1.sql) 재실행
 
-## 1) 프로젝트 생성
+## 자동 실행(권장)
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/projects \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"smoke-project\",\"description\":\"pipeline smoke\"}"
+```powershell
+cd backend
+./scripts/smoke_api.ps1
 ```
 
-응답에서 `projectId` 저장.
+## 수동 실행 순서
 
-## 2) 세션 생성
+1) `POST /api/auth/register`
+- 사용자 생성, 기대: `contractVersion = "v2"`
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/projects/{projectId}/sessions \
-  -H "Content-Type: application/json" \
-  -d "{\"inputType\":\"TEXT\",\"inputText\":\"서울 리전에 EC2 2개 mysql rds 퍼블릭\"}"
-```
+2) `POST /api/auth/login`
+- 기대: `accessToken`, `refreshToken` 반환
 
-응답에서 `sessionId` 저장.
+3) `GET /api/users/me`
+- 헤더: `Authorization: Bearer {accessToken}`
 
-## 3) 분석 실행(JSON 생성)
+4) `POST /api/uploads/images`
+- 현재는 URL 발급 스텁 동작
 
-```bash
-curl -X POST http://127.0.0.1:8000/sessions/{sessionId}/analyze \
-  -H "Content-Type: application/json" \
-  -d "{\"input_text\":\"서울 리전에 EC2 2개 mysql rds 퍼블릭\"}"
-```
+5) `POST /api/projects`
 
-기대: `status=generated`
+6) `POST /api/projects/{projectId}/sessions`
 
-## 4) Terraform 생성/검증
+7) `PATCH /api/sessions/{sessionId}/status`
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/sessions/{sessionId}/terraform
-```
+8) `POST /api/sessions/{sessionId}/architecture`
 
-기대:
-- `status=GENERATED`
-- `validationStatus=PASSED` 또는 `FAILED`
-- `FAILED`인데 메시지가 `terraform command not found`면 로컬 Terraform 설치 필요
+9) `POST /api/sessions/{sessionId}/terraform`
+- 기대: `status=GENERATED`, `contractVersion="v2"`
 
-## 5) 비용 계산
+10) `POST /api/sessions/{sessionId}/cost`
+- 기대: `status=COST_CALCULATED`, `contractVersion="v2"`
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/sessions/{sessionId}/cost
-```
+11) `GET /api/sessions/{sessionId}`
+- 기대: `architecture/terraform/cost` 모두 존재
 
-기대: `status=COST_CALCULATED`, `monthlyTotal > 0`
-
-## 6) 상세 조회
-
-```bash
-curl http://127.0.0.1:8000/api/sessions/{sessionId}
-```
-
-기대:
-- `architecture` 존재
-- `terraform` 존재
-- `cost` 존재
-
-## 7) 프로젝트 세션 목록 조회
-
-```bash
-curl http://127.0.0.1:8000/api/projects/{projectId}/sessions
-```
-
-기대: 방금 생성한 세션이 `status=COST_CALCULATED`로 표시
-
+12) `POST /api/auth/logout`
+- 기대: `success=true`, `contractVersion="v2"`

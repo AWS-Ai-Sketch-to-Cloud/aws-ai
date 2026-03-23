@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+## uvicorn app.main:app --reload
+
+from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 from pathlib import Path
+import secrets
 from typing import Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from jsonschema import ValidationError, validate
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -15,11 +20,20 @@ from sqlalchemy.orm import Session
 from app.ai_parser import AIParseError, parse_architecture_with_retry
 from app.cost_calculator import estimate_monthly_cost
 from app.database import get_db
-from app.models import AppSession, Project, SessionArchitecture, SessionCostResult, SessionTerraformResult
+from app.models import (
+    AppSession,
+    AuthIdentity,
+    AuthSession,
+    Project,
+    SessionArchitecture,
+    SessionCostResult,
+    SessionTerraformResult,
+    User,
+)
 from app.terraform_generator import generate_terraform_from_architecture
 from app.terraform_validator import validate_terraform_code
 
-CONTRACT_VERSION = "v1"
+CONTRACT_VERSION = "v2"
 ROOT = Path(__file__).resolve().parents[1]
 ARCH_SCHEMA_PATH = ROOT / "A_JSON_스키마_v1.json"
 
@@ -64,7 +78,7 @@ class SessionCreateResponse(BaseModel):
     project_id: str
     status: Literal["created"]
     created_at: str
-    contract_version: Literal["v1"] = CONTRACT_VERSION
+    contract_version: Literal["v2"] = CONTRACT_VERSION
 
 
 class SessionCreateApiResponse(BaseModel):
@@ -89,6 +103,7 @@ class TerraformGenerateResponse(BaseModel):
     validationStatus: str
     terraformCode: str
     validationOutput: str | None = None
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
 
 
 class CostCalculateResponse(BaseModel):
@@ -99,6 +114,90 @@ class CostCalculateResponse(BaseModel):
     monthlyTotal: float
     costBreakdownJson: dict[str, Any]
     assumptionJson: dict[str, Any]
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class RegisterRequest(BaseModel):
+    loginId: str = Field(min_length=3, max_length=50)
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+    displayName: str = Field(min_length=1, max_length=100)
+
+
+class RegisterResponse(BaseModel):
+    userId: str
+    loginId: str
+    email: str
+    displayName: str
+    isActive: bool
+    role: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class LoginRequest(BaseModel):
+    loginId: str = Field(min_length=3, max_length=50)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginUser(BaseModel):
+    userId: str
+    loginId: str
+    email: str
+    displayName: str
+    role: str
+
+
+class LoginResponse(BaseModel):
+    user: LoginUser
+    accessToken: str
+    refreshToken: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class LogoutRequest(BaseModel):
+    refreshToken: str = Field(min_length=10, max_length=500)
+
+
+class LogoutResponse(BaseModel):
+    success: bool
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class MeResponse(BaseModel):
+    userId: str
+    loginId: str
+    email: str
+    displayName: str
+    isActive: bool
+    role: str
+    lastLoginAt: str | None = None
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class UploadImageRequest(BaseModel):
+    contentType: str = Field(min_length=3, max_length=100)
+    fileName: str = Field(min_length=1, max_length=255)
+
+
+class UploadImageResponse(BaseModel):
+    fileId: str
+    url: str
+    contentType: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class SessionStatusPatchRequest(BaseModel):
+    status: Literal[
+        "CREATED",
+        "ANALYZING",
+        "ANALYZED",
+        "GENERATING_TERRAFORM",
+        "GENERATED",
+        "COST_CALCULATED",
+        "FAILED",
+    ]
+    errorCode: str | None = Field(default=None, max_length=50)
+    errorMessage: str | None = Field(default=None, max_length=2000)
 
 
 class ErrorPayload(BaseModel):
@@ -111,7 +210,28 @@ class AnalyzeResponse(BaseModel):
     status: Literal["generated", "failed"]
     parsed_json: dict[str, Any] | None = None
     error: ErrorPayload | None = None
-    contract_version: Literal["v1"] = CONTRACT_VERSION
+    contract_version: Literal["v2"] = CONTRACT_VERSION
+
+
+def hash_text(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def to_access_token(user_id: UUID) -> str:
+    return f"uid:{user_id}"
+
+
+def user_id_from_auth_header(authorization: str | None) -> UUID:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token.startswith("uid:"):
+        raise HTTPException(status_code=401, detail="invalid access token")
+    raw_user_id = token.removeprefix("uid:")
+    try:
+        return UUID(raw_user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail="invalid access token") from e
 
 
 def get_session_or_404(db: Session, session_id: str) -> AppSession:
@@ -127,6 +247,128 @@ def get_session_or_404(db: Session, session_id: str) -> AppSession:
 
 
 app = FastAPI(title="Sketch-to-Cloud API", version=CONTRACT_VERSION)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:3000", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.post("/api/auth/register", response_model=RegisterResponse)
+def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
+    existing_email = db.scalars(select(User).where(User.email == payload.email).limit(1)).first()
+    if existing_email:
+        raise HTTPException(status_code=409, detail="email already exists")
+
+    existing_login = db.scalars(select(User).where(User.login_id == payload.loginId).limit(1)).first()
+    if existing_login:
+        raise HTTPException(status_code=409, detail="loginId already exists")
+
+    user = User(
+        login_id=payload.loginId,
+        email=payload.email,
+        password_hash=hash_text(payload.password),
+        display_name=payload.displayName,
+        is_active=True,
+        role="USER",
+    )
+    db.add(user)
+    db.flush()
+
+    identity = AuthIdentity(user_id=user.id, provider="LOCAL", provider_user_id=payload.loginId)
+    db.add(identity)
+    db.commit()
+
+    return RegisterResponse(
+        userId=str(user.id),
+        loginId=payload.loginId,
+        email=user.email,
+        displayName=user.display_name,
+        isActive=user.is_active,
+        role=user.role,
+    )
+
+
+@app.post("/api/auth/login", response_model=LoginResponse)
+def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+    user = db.scalars(select(User).where(User.login_id == payload.loginId).limit(1)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="invalid credentials")
+
+    if not user or not user.password_hash or user.password_hash != hash_text(payload.password):
+        raise HTTPException(status_code=401, detail="invalid credentials")
+
+    refresh_token = secrets.token_urlsafe(48)
+    auth_session = AuthSession(
+        user_id=user.id,
+        refresh_token_hash=hash_text(refresh_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+    )
+    db.add(auth_session)
+    user.last_login_at = datetime.now(timezone.utc)
+    user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return LoginResponse(
+        user=LoginUser(
+            userId=str(user.id),
+            loginId=user.login_id,
+            email=user.email,
+            displayName=user.display_name,
+            role=user.role,
+        ),
+        accessToken=to_access_token(user.id),
+        refreshToken=refresh_token,
+    )
+
+
+@app.post("/api/auth/logout", response_model=LogoutResponse)
+def logout(payload: LogoutRequest, db: Session = Depends(get_db)) -> LogoutResponse:
+    refresh_hash = hash_text(payload.refreshToken)
+    auth_session = db.scalars(
+        select(AuthSession)
+        .where(AuthSession.refresh_token_hash == refresh_hash, AuthSession.revoked_at.is_(None))
+        .limit(1)
+    ).first()
+    if auth_session:
+        auth_session.revoked_at = datetime.now(timezone.utc)
+        auth_session.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    return LogoutResponse(success=True)
+
+
+@app.get("/api/users/me", response_model=MeResponse)
+def get_me(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> MeResponse:
+    user_id = user_id_from_auth_header(authorization)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="user not found")
+
+    return MeResponse(
+        userId=str(user.id),
+        loginId=user.login_id,
+        email=user.email,
+        displayName=user.display_name,
+        isActive=user.is_active,
+        role=user.role,
+        lastLoginAt=dt_to_iso(user.last_login_at) if user.last_login_at else None,
+    )
+
+
+@app.post("/api/uploads/images", response_model=UploadImageResponse)
+def upload_image_stub(payload: UploadImageRequest) -> UploadImageResponse:
+    file_id = uuid4()
+    safe_file_name = payload.fileName.strip().replace(" ", "-")
+    return UploadImageResponse(
+        fileId=str(file_id),
+        url=f"https://storage.example.com/uploads/{file_id}/{safe_file_name}",
+        contentType=payload.contentType,
+    )
 
 
 @app.post("/api/projects", response_model=ProjectCreateResponse)
@@ -292,6 +534,19 @@ def get_session_detail(session_id: str, db: Session = Depends(get_db)) -> dict[s
     }
 
 
+@app.patch("/api/sessions/{session_id}/status")
+def patch_session_status(
+    session_id: str, payload: SessionStatusPatchRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    session = get_session_or_404(db, session_id)
+    session.status = payload.status
+    session.error_code = payload.errorCode
+    session.error_message = payload.errorMessage
+    session.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"sessionId": str(session.id), "status": session.status}
+
+
 @app.post("/api/sessions/{session_id}/terraform", response_model=TerraformGenerateResponse)
 def generate_terraform(session_id: str, db: Session = Depends(get_db)) -> TerraformGenerateResponse:
     session = get_session_or_404(db, session_id)
@@ -335,6 +590,7 @@ def generate_terraform(session_id: str, db: Session = Depends(get_db)) -> Terraf
             validationStatus=validation_status,
             terraformCode=terraform_code,
             validationOutput=validation_output,
+            contractVersion=CONTRACT_VERSION,
         )
     except Exception as e:  # noqa: BLE001
         session.status = "FAILED"
@@ -387,6 +643,7 @@ def calculate_cost(session_id: str, db: Session = Depends(get_db)) -> CostCalcul
             monthlyTotal=float(cost["monthly_total"]),
             costBreakdownJson=cost["breakdown"],
             assumptionJson=cost["assumptions"],
+            contractVersion=CONTRACT_VERSION,
         )
     except Exception as e:  # noqa: BLE001
         session.status = "FAILED"
@@ -505,3 +762,4 @@ def get_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, Any
         "updated_at": dt_to_iso(session.updated_at),
         "contract_version": CONTRACT_VERSION,
     }
+

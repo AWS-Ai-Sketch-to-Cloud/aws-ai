@@ -1,43 +1,78 @@
-# API 샘플 응답 (프론트 연동용)
+# API 샘플 응답 (v2)
 
 기준:
 - Base URL: `http://127.0.0.1:8000`
-- DB 스키마 리비전: `01898398e88a`
-- 개발 기본 모드: `BEDROCK_ENABLED=false`
+- 계약 버전: `contractVersion = "v2"`
 
-## 1) 프로젝트 생성
+## 1) 회원가입
 
-`POST /api/projects`
+`POST /api/auth/register`
 
-요청:
 ```json
 {
-  "name": "smoke-project",
-  "description": "pipeline smoke"
+  "userId": "5d54e822-6448-49f2-94ff-d5f743ae4c85",
+  "loginId": "honggildong",
+  "email": "user@example.com",
+  "displayName": "홍길동",
+  "isActive": true,
+  "role": "USER",
+  "contractVersion": "v2"
 }
 ```
 
-응답:
+## 2) 로그인
+
+`POST /api/auth/login`
+
 ```json
 {
-  "projectId": "8b066ca0-bb6a-4f22-a769-1efead0a8d62",
-  "name": "smoke-project"
+  "user": {
+    "userId": "5d54e822-6448-49f2-94ff-d5f743ae4c85",
+    "loginId": "honggildong",
+    "email": "user@example.com",
+    "displayName": "홍길동",
+    "role": "USER"
+  },
+  "accessToken": "uid:5d54e822-6448-49f2-94ff-d5f743ae4c85",
+  "refreshToken": "random-token",
+  "contractVersion": "v2"
 }
 ```
 
-## 2) 세션 생성
+## 3) 내 정보 조회
+
+`GET /api/users/me`
+
+```json
+{
+  "userId": "5d54e822-6448-49f2-94ff-d5f743ae4c85",
+  "loginId": "honggildong",
+  "email": "user@example.com",
+  "displayName": "홍길동",
+  "isActive": true,
+  "role": "USER",
+  "lastLoginAt": "2026-03-23T09:00:00Z",
+  "contractVersion": "v2"
+}
+```
+
+## 4) 이미지 업로드 URL 발급
+
+`POST /api/uploads/images`
+
+```json
+{
+  "fileId": "af8d45b2-4efd-4f80-bceb-b9dbf5e2b33a",
+  "url": "https://storage.example.com/uploads/af8d45b2-4efd-4f80-bceb-b9dbf5e2b33a/architecture-sketch.png",
+  "contentType": "image/png",
+  "contractVersion": "v2"
+}
+```
+
+## 5) 세션 생성
 
 `POST /api/projects/{projectId}/sessions`
 
-요청:
-```json
-{
-  "inputType": "TEXT",
-  "inputText": "서울 리전에 EC2 2개 mysql rds 퍼블릭"
-}
-```
-
-응답:
 ```json
 {
   "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
@@ -46,68 +81,47 @@
 }
 ```
 
-## 3) 분석 실행
+## 6) 상태 갱신
 
-`POST /sessions/{sessionId}/analyze`
+`PATCH /api/sessions/{sessionId}/status`
 
-요청:
 ```json
 {
-  "input_text": "서울 리전에 EC2 2개 mysql rds 퍼블릭"
+  "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
+  "status": "ANALYZING"
 }
 ```
 
-응답:
-```json
-{
-  "session_id": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
-  "status": "generated",
-  "parsed_json": {
-    "vpc": true,
-    "ec2": { "count": 2, "instance_type": "t3.micro" },
-    "rds": { "enabled": true, "engine": "mysql" },
-    "public": false,
-    "region": "ap-northeast-2"
-  },
-  "error": null,
-  "contract_version": "v1"
-}
-```
-
-## 4) Terraform 생성/검증
+## 7) Terraform 생성
 
 `POST /api/sessions/{sessionId}/terraform`
 
-응답:
 ```json
 {
   "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
   "status": "GENERATED",
-  "validationStatus": "FAILED",
-  "terraformCode": "terraform { ... }",
-  "validationOutput": "terraform command not found. Install Terraform and ensure it is in PATH."
+  "validationStatus": "PASSED",
+  "terraformCode": "resource ...",
+  "validationOutput": "",
+  "contractVersion": "v2"
 }
 ```
 
-참고:
-- Terraform CLI 설치 시 `validationStatus`가 `PASSED`로 바뀔 수 있음
-
-## 5) 비용 계산
+## 8) 비용 계산
 
 `POST /api/sessions/{sessionId}/cost`
 
-응답:
 ```json
 {
   "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
   "status": "COST_CALCULATED",
   "currency": "KRW",
   "region": "ap-northeast-2",
-  "monthlyTotal": 42000.0,
+  "monthlyTotal": 30000,
   "costBreakdownJson": {
-    "ec2": 24000,
+    "ec2": 12000,
     "rds": 18000,
-    "total": 42000
+    "total": 30000
   },
   "assumptionJson": {
     "currency": "KRW",
@@ -118,75 +132,7 @@
     "rds_engine": "mysql",
     "hours_per_month": 730,
     "pricing_version": "v1-static"
-  }
+  },
+  "contractVersion": "v2"
 }
 ```
-
-## 6) 세션 상세 조회
-
-`GET /api/sessions/{sessionId}`
-
-응답:
-```json
-{
-  "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
-  "projectId": "8b066ca0-bb6a-4f22-a769-1efead0a8d62",
-  "versionNo": 1,
-  "inputType": "TEXT",
-  "inputText": "서울 리전에 EC2 2개 mysql rds 퍼블릭",
-  "status": "COST_CALCULATED",
-  "architecture": {
-    "schemaVersion": "v1",
-    "architectureJson": {
-      "vpc": true,
-      "ec2": { "count": 2, "instance_type": "t3.micro" },
-      "rds": { "enabled": true, "engine": "mysql" },
-      "public": false,
-      "region": "ap-northeast-2"
-    }
-  },
-  "terraform": {
-    "validationStatus": "FAILED",
-    "terraformCode": "terraform { ... }",
-    "validationOutput": "terraform command not found. Install Terraform and ensure it is in PATH."
-  },
-  "cost": {
-    "currency": "KRW",
-    "region": "ap-northeast-2",
-    "monthlyTotal": 42000.0,
-    "costBreakdownJson": {
-      "ec2": 24000,
-      "rds": 18000,
-      "total": 42000
-    },
-    "assumptionJson": {
-      "currency": "KRW",
-      "region": "ap-northeast-2",
-      "ec2_type": "t3.micro",
-      "ec2_count": 2,
-      "rds_enabled": true,
-      "rds_engine": "mysql",
-      "hours_per_month": 730,
-      "pricing_version": "v1-static"
-    }
-  },
-  "error": null
-}
-```
-
-## 7) 프로젝트 세션 목록 조회
-
-`GET /api/projects/{projectId}/sessions`
-
-응답:
-```json
-[
-  {
-    "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
-    "versionNo": 1,
-    "status": "COST_CALCULATED",
-    "createdAt": "2026-03-23T07:21:14Z"
-  }
-]
-```
-

@@ -7,6 +7,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    login_id VARCHAR(50) UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255),
     display_name VARCHAR(100) NOT NULL,
@@ -17,6 +18,12 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Backfill-safe 보강: 기존 DB에 users.login_id가 없을 때도 v2 명세를 맞출 수 있게 처리
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_id VARCHAR(50);
+UPDATE users SET login_id = email WHERE login_id IS NULL;
+ALTER TABLE users ALTER COLUMN login_id SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_login_id ON users(login_id);
 
 CREATE TABLE IF NOT EXISTS auth_identities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
