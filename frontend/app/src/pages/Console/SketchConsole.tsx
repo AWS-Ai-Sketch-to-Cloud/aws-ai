@@ -20,6 +20,9 @@ type ApiState = {
   architectureJson: string;
   accessToken: string;
   refreshToken: string;
+  patchStatus: string;
+  patchErrorCode: string;
+  patchErrorMessage: string;
 };
 
 const defaultArchitecture = `{
@@ -48,6 +51,9 @@ export default function SketchConsole() {
     architectureJson: defaultArchitecture,
     accessToken: "",
     refreshToken: "",
+    patchStatus: "ANALYZING",
+    patchErrorCode: "",
+    patchErrorMessage: "",
   });
   const [resultText, setResultText] = useState<string>("");
   const [logs, setLogs] = useState<string[]>([]);
@@ -168,6 +174,8 @@ export default function SketchConsole() {
               <button onClick={() => run("이미지 URL 발급", async () => { const data = (await apiCall("/api/uploads/images", "POST", { contentType: state.contentType, fileName: state.fileName })) as Record<string, unknown>; patchState("inputImageUrl", String(data.url ?? "")); })} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium dark:border-gray-700">이미지 URL 발급</button>
               <button onClick={() => run("프로젝트 생성", async () => { const data = (await apiCall("/api/projects", "POST", { name: state.projectName, description: state.projectDescription })) as Record<string, unknown>; patchState("projectId", String(data.projectId ?? "")); })} className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white">프로젝트 생성</button>
               <button onClick={() => run("세션 생성", async () => { const data = (await apiCall(`/api/projects/${state.projectId}/sessions`, "POST", { inputType: state.inputImageUrl ? "TEXT_WITH_SKETCH" : "TEXT", inputText: state.inputText, inputImageUrl: state.inputImageUrl || null })) as Record<string, unknown>; patchState("sessionId", String(data.sessionId ?? "")); })} className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white">세션 생성</button>
+              <button onClick={() => run("프로젝트 목록 조회", async () => void (await apiCall("/api/projects", "GET")))} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium dark:border-gray-700">프로젝트 목록</button>
+              <button onClick={() => run("프로젝트 세션 목록 조회", async () => void (await apiCall(`/api/projects/${state.projectId}/sessions`, "GET")))} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium dark:border-gray-700">프로젝트 세션 목록</button>
             </div>
           </div>
 
@@ -179,6 +187,35 @@ export default function SketchConsole() {
               <button onClick={() => run("테라폼 생성", async () => void (await apiCall(`/api/sessions/${state.sessionId}/terraform`, "POST")))} className="rounded-lg bg-success-500 px-3 py-2 text-sm font-medium text-white">테라폼 생성</button>
               <button onClick={() => run("비용 계산", async () => void (await apiCall(`/api/sessions/${state.sessionId}/cost`, "POST")))} className="rounded-lg bg-warning-500 px-3 py-2 text-sm font-medium text-white">비용 계산</button>
               <button onClick={() => run("상세 조회", async () => void (await apiCall(`/api/sessions/${state.sessionId}`, "GET")))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium dark:border-gray-700">상세 조회</button>
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <select value={state.patchStatus} onChange={(e) => patchState("patchStatus", e.target.value)} className={inputBase}>
+                <option value="CREATED">CREATED</option>
+                <option value="ANALYZING">ANALYZING</option>
+                <option value="ANALYZED">ANALYZED</option>
+                <option value="GENERATING_TERRAFORM">GENERATING_TERRAFORM</option>
+                <option value="GENERATED">GENERATED</option>
+                <option value="COST_CALCULATED">COST_CALCULATED</option>
+                <option value="FAILED">FAILED</option>
+              </select>
+              <input value={state.patchErrorCode} onChange={(e) => patchState("patchErrorCode", e.target.value)} placeholder="errorCode (선택)" className={inputBase} />
+              <input value={state.patchErrorMessage} onChange={(e) => patchState("patchErrorMessage", e.target.value)} placeholder="errorMessage (선택)" className={inputBase} />
+            </div>
+            <div className="mt-3">
+              <button
+                onClick={() =>
+                  run("세션 상태 갱신", async () => {
+                    await apiCall(`/api/sessions/${state.sessionId}/status`, "PATCH", {
+                      status: state.patchStatus,
+                      errorCode: state.patchErrorCode || null,
+                      errorMessage: state.patchErrorMessage || null,
+                    });
+                  })
+                }
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium dark:border-gray-700"
+              >
+                세션 상태 PATCH
+              </button>
             </div>
           </div>
         </section>
