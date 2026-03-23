@@ -2,6 +2,7 @@
   "name": "frontend-runner",
   "private": true,
   "scripts": {
+    "postinstall": "npm --prefix app install",
     "install:app": "npm --prefix app install",
     "dev": "npm --prefix app run dev",
     "build": "npm --prefix app run build",

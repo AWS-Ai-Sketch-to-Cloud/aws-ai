@@ -3,6 +3,7 @@ import NotFound from "./pages/OtherPage/NotFound";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import SketchConsole from "./pages/Console/SketchConsole";
+import LoginPage from "./pages/Auth/LoginPage";
 
 export default function App() {
   return (
@@ -10,8 +11,9 @@ export default function App() {
       <Router>
         <ScrollToTop />
         <Routes>
+          <Route index path="/" element={<LoginPage />} />
           <Route element={<AppLayout />}>
-            <Route index path="/" element={<SketchConsole />} />
+            <Route path="/console" element={<SketchConsole />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

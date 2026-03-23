@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 
 type SessionDetail = {
@@ -47,6 +47,24 @@ export default function SketchConsole() {
   const [logs, setLogs] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  useEffect(() => {
+    const savedAuth = sessionStorage.getItem("stc-auth");
+    if (!savedAuth) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(savedAuth) as Partial<Pick<AppState, "loginId" | "password">>;
+      setState((prev) => ({
+        ...prev,
+        loginId: parsed.loginId ?? prev.loginId,
+        password: parsed.password ?? prev.password,
+      }));
+    } catch {
+      // Ignore malformed session data and keep defaults.
+    }
+  }, []);
 
   const setField = <K extends keyof AppState>(key: K, value: AppState[K]) => {
     setState((prev) => ({ ...prev, [key]: value }));
