@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 from pathlib import Path
+import os
 
 
 def _run(cmd: list[str], cwd: Path, timeout_sec: int = 60) -> tuple[int, str]:
@@ -19,20 +20,21 @@ def _run(cmd: list[str], cwd: Path, timeout_sec: int = 60) -> tuple[int, str]:
 
 
 def validate_terraform_code(terraform_code: str) -> tuple[str, str]:
+    terraform_bin = os.getenv("TERRAFORM_BIN", "terraform")
     try:
         with tempfile.TemporaryDirectory(prefix="tf_validate_") as temp_dir:
             work = Path(temp_dir)
             (work / "main.tf").write_text(terraform_code, encoding="utf-8")
 
             init_code, init_output = _run(
-                ["terraform", "init", "-backend=false", "-input=false", "-no-color"],
+                [terraform_bin, "init", "-backend=false", "-input=false", "-no-color"],
                 cwd=work,
             )
             if init_code != 0:
                 return "FAILED", f"[terraform init]\n{init_output}"
 
             validate_code, validate_output = _run(
-                ["terraform", "validate", "-no-color"],
+                [terraform_bin, "validate", "-no-color"],
                 cwd=work,
             )
             if validate_code != 0:

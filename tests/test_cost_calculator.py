@@ -16,6 +16,7 @@ def test_cost_with_rds() -> None:
     assert out["monthly_total"] == 42000
     assert out["breakdown"]["ec2"] == 24000
     assert out["breakdown"]["rds"] == 18000
+    assert out["assumptions"]["pricing_version"] == "v2-table"
 
 
 def test_cost_without_rds() -> None:
