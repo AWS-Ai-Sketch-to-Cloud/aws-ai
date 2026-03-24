@@ -2,7 +2,7 @@
 
 목적:
 - 팀원이 같은 순서로 v2 API 동작을 빠르게 확인
-- 흐름: `auth -> upload -> project -> session -> status -> architecture -> terraform -> cost -> detail -> logout`
+- 흐름: `auth -> upload -> project -> session -> status -> architecture -> terraform -> cost -> compare -> detail -> logout`
 
 전제:
 - 서버 실행: `uvicorn app.main:app --reload`
@@ -55,5 +55,9 @@ cd backend
 - 헤더: `Authorization: Bearer {accessToken}`
 - 기대: `architecture/terraform/cost` 모두 존재
 
-12) `POST /api/auth/logout`
+12) `GET /api/sessions/{sessionId}/compare`
+- 헤더: `Authorization: Bearer {accessToken}`
+- 기대: 이전 버전 세션이 있으면 `jsonDiff/terraformDiff/costDiff` 반환
+
+13) `POST /api/auth/logout`
 - 기대: `success=true`, `contractVersion="v2"`

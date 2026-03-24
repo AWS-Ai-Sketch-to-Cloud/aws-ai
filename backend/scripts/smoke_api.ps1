@@ -54,7 +54,7 @@ Write-Host "projectId=$projectId ownerId=$($project.ownerId) contractVersion=$($
 Write-Host "5) Create session"
 $session = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/projects/$projectId/sessions" -Headers $authHeader -ContentType "application/json" -Body (@{
     inputType = "TEXT"
-    inputText = "Build private infra with 2 EC2 and 1 MySQL RDS in ap-northeast-2"
+    inputText = "Build private infra with 1 EC2 and 1 MySQL RDS in ap-northeast-2"
 } | ConvertTo-Json)
 $sessionId = $session.sessionId
 Write-Host "sessionId=$sessionId status=$($session.status) contractVersion=$($session.contractVersion)"
@@ -73,7 +73,7 @@ $archBody = @{
     architectureJson = @{
         vpc = $true
         ec2 = @{
-            count = 2
+            count = 1
             instance_type = "t3.micro"
         }
         rds = @{
@@ -95,11 +95,50 @@ Write-Host "9) Calculate cost"
 $cost = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions/$sessionId/cost" -Headers $authHeader
 Write-Host "costStatus=$($cost.status) monthlyTotal=$($cost.monthlyTotal) contractVersion=$($cost.contractVersion)"
 
-Write-Host "10) Get detail"
-$detail = Invoke-RestMethod -Method Get -Uri "$BaseUrl/api/sessions/$sessionId" -Headers $authHeader
+Write-Host "10) Create second session for compare"
+$session2 = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/projects/$projectId/sessions" -Headers $authHeader -ContentType "application/json" -Body (@{
+    inputType = "TEXT"
+    inputText = "Build private infra with 2 EC2 and 1 MySQL RDS in ap-northeast-2"
+} | ConvertTo-Json)
+$sessionId2 = $session2.sessionId
+Write-Host "session2Id=$sessionId2 versionNo=$($session2.versionNo)"
+
+Write-Host "11) Save architecture for second session"
+$archBody2 = @"
+{
+  "schemaVersion": "v1",
+  "architectureJson": {
+    "vpc": true,
+    "ec2": {
+      "count": 2,
+      "instance_type": "t3.micro"
+    },
+    "rds": {
+      "enabled": true,
+      "engine": "mysql"
+    },
+    "public": false,
+    "region": "ap-northeast-2"
+  }
+}
+"@
+$arch2 = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions/$sessionId2/architecture" -Headers $authHeader -ContentType "application/json" -Body $archBody2
+Write-Host "architecture2Status=$($arch2.status)"
+
+Write-Host "12) Generate terraform and cost for second session"
+$terraform2 = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions/$sessionId2/terraform" -Headers $authHeader
+$cost2 = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions/$sessionId2/cost" -Headers $authHeader
+Write-Host "terraform2Status=$($terraform2.status) cost2Total=$($cost2.monthlyTotal)"
+
+Write-Host "13) Compare sessions"
+$compare = Invoke-RestMethod -Method Get -Uri "$BaseUrl/api/sessions/$sessionId2/compare" -Headers $authHeader
+Write-Host "compareBaseVersion=$($compare.baseSession.versionNo) compareTargetVersion=$($compare.targetSession.versionNo) jsonDiffCount=$($compare.jsonDiff.Count)"
+
+Write-Host "14) Get detail"
+$detail = Invoke-RestMethod -Method Get -Uri "$BaseUrl/api/sessions/$sessionId2" -Headers $authHeader
 Write-Host "detailStatus=$($detail.status) hasArchitecture=$($null -ne $detail.architecture) hasTerraform=$($null -ne $detail.terraform) hasCost=$($null -ne $detail.cost) contractVersion=$($detail.contractVersion)"
 
-Write-Host "11) Logout"
+Write-Host "15) Logout"
 $logout = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/auth/logout" -ContentType "application/json" -Body (@{
     refreshToken = $refreshToken
 } | ConvertTo-Json)

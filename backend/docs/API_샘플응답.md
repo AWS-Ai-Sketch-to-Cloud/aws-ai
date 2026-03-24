@@ -140,3 +140,70 @@
   "contractVersion": "v2"
 }
 ```
+
+## 9) 세션 비교
+
+`GET /api/sessions/{sessionId}/compare`
+
+```json
+{
+  "baseSession": {
+    "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f4",
+    "versionNo": 1,
+    "status": "COST_CALCULATED",
+    "createdAt": "2026-03-23T09:00:00Z"
+  },
+  "targetSession": {
+    "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
+    "versionNo": 2,
+    "status": "COST_CALCULATED",
+    "createdAt": "2026-03-23T09:10:00Z"
+  },
+  "jsonDiff": [
+    {
+      "path": "$.ec2.count",
+      "changeType": "changed",
+      "before": 1,
+      "after": 2
+    }
+  ],
+  "terraformDiff": {
+    "changed": true,
+    "diff": "--- base.tf\n+++ target.tf\n@@ -1,3 +1,3 @@\n-resource \"aws_instance\" \"web_1\" {}\n+resource \"aws_instance\" \"web_2\" {}"
+  },
+  "costDiff": {
+    "changed": true,
+    "monthlyTotal": {
+      "before": 18000,
+      "after": 30000,
+      "delta": 12000
+    },
+    "breakdown": {
+      "ec2": {
+        "before": 0,
+        "after": 12000,
+        "delta": 12000
+      },
+      "rds": {
+        "before": 18000,
+        "after": 18000,
+        "delta": 0
+      },
+      "total": {
+        "before": 18000,
+        "after": 30000,
+        "delta": 12000
+      }
+    },
+    "assumptionsChanged": [
+      {
+        "path": "$.ec2_count",
+        "changeType": "changed",
+        "before": 1,
+        "after": 2
+      }
+    ]
+  },
+  "contractVersion": "v2"
+}
+```

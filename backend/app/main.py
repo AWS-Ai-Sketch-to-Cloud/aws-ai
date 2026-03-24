@@ -2,6 +2,7 @@ from __future__ import annotations
 
 ## uvicorn app.main:app --reload
 
+from difflib import unified_diff
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -282,6 +283,47 @@ class SessionDetailResponse(BaseModel):
     contractVersion: Literal["v2"] = CONTRACT_VERSION
 
 
+class SessionCompareSummary(BaseModel):
+    sessionId: str
+    versionNo: int
+    status: str
+    createdAt: str
+
+
+class JsonDiffItem(BaseModel):
+    path: str
+    changeType: Literal["added", "removed", "changed"]
+    before: Any | None = None
+    after: Any | None = None
+
+
+class TerraformDiffResponse(BaseModel):
+    changed: bool
+    diff: str
+
+
+class CostFieldDelta(BaseModel):
+    before: float | None = None
+    after: float | None = None
+    delta: float | None = None
+
+
+class CostDiffResponse(BaseModel):
+    changed: bool
+    monthlyTotal: CostFieldDelta
+    breakdown: dict[str, CostFieldDelta]
+    assumptionsChanged: list[JsonDiffItem]
+
+
+class SessionCompareResponse(BaseModel):
+    baseSession: SessionCompareSummary
+    targetSession: SessionCompareSummary
+    jsonDiff: list[JsonDiffItem]
+    terraformDiff: TerraformDiffResponse
+    costDiff: CostDiffResponse
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
 class ErrorPayload(BaseModel):
     code: Literal["PARSE_ERROR", "SCHEMA_ERROR", "TIMEOUT_ERROR", "INTERNAL_ERROR"]
     message: str
@@ -391,6 +433,122 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="user not found")
     return user
+
+
+def build_session_summary(session: AppSession) -> SessionCompareSummary:
+    return SessionCompareSummary(
+        sessionId=str(session.id),
+        versionNo=session.version_no,
+        status=session.status,
+        createdAt=dt_to_iso(session.created_at),
+    )
+
+
+def collect_json_diff(before: Any, after: Any, path: str = "$") -> list[JsonDiffItem]:
+    if isinstance(before, dict) and isinstance(after, dict):
+        items: list[JsonDiffItem] = []
+        all_keys = sorted(set(before.keys()) | set(after.keys()))
+        for key in all_keys:
+            next_path = f"{path}.{key}"
+            if key not in before:
+                items.append(JsonDiffItem(path=next_path, changeType="added", after=after[key]))
+            elif key not in after:
+                items.append(JsonDiffItem(path=next_path, changeType="removed", before=before[key]))
+            else:
+                items.extend(collect_json_diff(before[key], after[key], next_path))
+        return items
+
+    if isinstance(before, list) and isinstance(after, list):
+        if before == after:
+            return []
+        return [JsonDiffItem(path=path, changeType="changed", before=before, after=after)]
+
+    if before != after:
+        return [JsonDiffItem(path=path, changeType="changed", before=before, after=after)]
+
+    return []
+
+
+def build_terraform_diff(before_code: str | None, after_code: str | None) -> TerraformDiffResponse:
+    before_lines = (before_code or "").splitlines()
+    after_lines = (after_code or "").splitlines()
+    diff = "\n".join(
+        unified_diff(before_lines, after_lines, fromfile="base.tf", tofile="target.tf", lineterm="")
+    )
+    return TerraformDiffResponse(changed=(before_code or "") != (after_code or ""), diff=diff)
+
+
+def to_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def build_cost_delta(before: Any, after: Any) -> CostFieldDelta:
+    before_num = to_float(before)
+    after_num = to_float(after)
+    if before_num is None and after_num is None:
+        return CostFieldDelta(before=None, after=None, delta=None)
+    if before_num is None or after_num is None:
+        return CostFieldDelta(before=before_num, after=after_num, delta=None)
+    return CostFieldDelta(before=before_num, after=after_num, delta=round(after_num - before_num, 2))
+
+
+def build_cost_diff(
+    before_cost: SessionCostResult | None,
+    after_cost: SessionCostResult | None,
+) -> CostDiffResponse:
+    before_breakdown = before_cost.cost_breakdown_json if before_cost else {}
+    after_breakdown = after_cost.cost_breakdown_json if after_cost else {}
+    cost_keys = sorted(set(before_breakdown.keys()) | set(after_breakdown.keys()))
+
+    breakdown = {key: build_cost_delta(before_breakdown.get(key), after_breakdown.get(key)) for key in cost_keys}
+    assumptions_before = before_cost.assumption_json if before_cost else {}
+    assumptions_after = after_cost.assumption_json if after_cost else {}
+    assumptions_changed = collect_json_diff(assumptions_before, assumptions_after)
+
+    monthly_before = before_cost.monthly_total if before_cost else None
+    monthly_after = after_cost.monthly_total if after_cost else None
+    monthly_total = build_cost_delta(monthly_before, monthly_after)
+
+    changed = (
+        monthly_total.before != monthly_total.after
+        or any(item.before != item.after for item in breakdown.values())
+        or bool(assumptions_changed)
+    )
+    return CostDiffResponse(
+        changed=changed,
+        monthlyTotal=monthly_total,
+        breakdown=breakdown,
+        assumptionsChanged=assumptions_changed,
+    )
+
+
+def get_compare_base_session(
+    db: Session,
+    target_session: AppSession,
+    base_session_id: str | None,
+) -> AppSession:
+    if base_session_id:
+        base_session = get_session_or_404(db, base_session_id)
+        if base_session.project_id != target_session.project_id:
+            raise HTTPException(status_code=400, detail="base session must belong to the same project")
+        if base_session.id == target_session.id:
+            raise HTTPException(status_code=400, detail="base session must be different from target session")
+        return base_session
+
+    previous_session = db.scalars(
+        select(AppSession)
+        .where(
+            AppSession.project_id == target_session.project_id,
+            AppSession.version_no < target_session.version_no,
+        )
+        .order_by(AppSession.version_no.desc())
+        .limit(1)
+    ).first()
+    if not previous_session:
+        raise HTTPException(status_code=404, detail="previous session not found for comparison")
+    return previous_session
 
 
 app = FastAPI(title="Sketch-to-Cloud API", version=CONTRACT_VERSION)
@@ -739,6 +897,56 @@ def get_session_detail(
         error=SessionDetailError(**error) if error else None,
         createdAt=dt_to_iso(session.created_at),
         updatedAt=dt_to_iso(session.updated_at),
+    )
+
+
+@app.get("/api/sessions/{session_id}/compare", response_model=SessionCompareResponse)
+def compare_session_detail(
+    session_id: str,
+    baseSessionId: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionCompareResponse:
+    target_session = get_session_or_404(db, session_id)
+    ensure_session_access(target_session, current_user)
+    base_session = get_compare_base_session(db, target_session, baseSessionId)
+    ensure_session_access(base_session, current_user)
+
+    base_architecture = db.scalars(
+        select(SessionArchitecture).where(SessionArchitecture.session_id == base_session.id).limit(1)
+    ).first()
+    target_architecture = db.scalars(
+        select(SessionArchitecture).where(SessionArchitecture.session_id == target_session.id).limit(1)
+    ).first()
+    base_terraform = db.scalars(
+        select(SessionTerraformResult).where(SessionTerraformResult.session_id == base_session.id).limit(1)
+    ).first()
+    target_terraform = db.scalars(
+        select(SessionTerraformResult).where(SessionTerraformResult.session_id == target_session.id).limit(1)
+    ).first()
+    base_cost = db.scalars(
+        select(SessionCostResult).where(SessionCostResult.session_id == base_session.id).limit(1)
+    ).first()
+    target_cost = db.scalars(
+        select(SessionCostResult).where(SessionCostResult.session_id == target_session.id).limit(1)
+    ).first()
+
+    json_diff = collect_json_diff(
+        base_architecture.architecture_json if base_architecture else {},
+        target_architecture.architecture_json if target_architecture else {},
+    )
+    terraform_diff = build_terraform_diff(
+        base_terraform.terraform_code if base_terraform else None,
+        target_terraform.terraform_code if target_terraform else None,
+    )
+    cost_diff = build_cost_diff(base_cost, target_cost)
+
+    return SessionCompareResponse(
+        baseSession=build_session_summary(base_session),
+        targetSession=build_session_summary(target_session),
+        jsonDiff=json_diff,
+        terraformDiff=terraform_diff,
+        costDiff=cost_diff,
     )
 
 
