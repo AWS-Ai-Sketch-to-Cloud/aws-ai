@@ -561,6 +561,11 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def healthcheck() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.post("/api/auth/register", response_model=RegisterResponse)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     existing_email = db.scalars(select(User).where(User.email == payload.email).limit(1)).first()
