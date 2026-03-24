@@ -1,11 +1,12 @@
 import { FormEvent, useState } from "react";
-import { Link } from "react-router";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const navigate = useNavigate();
+  const [displayName, setDisplayName] = useState("");
   const [loginId, setLoginId] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -13,7 +14,9 @@ export default function LoginPage() {
     sessionStorage.setItem(
       "stc-auth",
       JSON.stringify({
+        displayName,
         loginId,
+        email,
         password,
       }),
     );
@@ -23,8 +26,8 @@ export default function LoginPage() {
   return (
     <>
       <PageMeta
-        title="로그인 | Sketch-to-Cloud"
-        description="Sketch-to-Cloud 로그인"
+        title="회원가입 | Sketch-to-Cloud"
+        description="Sketch-to-Cloud 회원가입"
       />
       <div className="relative min-h-screen overflow-hidden bg-[#FDFDFD] px-6 py-10 text-[#202020]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,153,0,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(73,205,223,0.18),_transparent_28%)]" />
@@ -35,36 +38,36 @@ export default function LoginPage() {
                 Sketch to Cloud
               </p>
               <h1 className="mt-6 max-w-xl text-5xl font-semibold leading-tight">
-                스케치와 텍스트를 AWS 설계 파이프라인으로 바로 연결합니다.
+                회원가입 후 바로 인프라 설계 콘솔로 들어갈 수 있습니다.
               </h1>
               <p className="mt-6 max-w-lg text-base leading-7 text-gray-600">
-                로그인 후 콘솔에서 프로젝트를 만들고, 세션을 실행하고, 아키텍처
-                분석과 Terraform 생성, 비용 계산까지 한 흐름으로 진행할 수
+                계정을 만들면 프로젝트와 세션을 분리해서 관리하고, 아키텍처
+                분석부터 Terraform 생성, 비용 비교까지 한 흐름으로 확인할 수
                 있습니다.
               </p>
               <div className="mt-10 grid gap-4 sm:grid-cols-3">
                 <div className="rounded-2xl border border-[#E7E7E7] bg-[#FFF7EB] p-4">
                   <p className="text-xs uppercase tracking-[0.24em] text-gray-400">
-                    입력
+                    프로젝트
                   </p>
                   <p className="mt-3 text-sm text-gray-200">
-                    텍스트와 스케치 이미지 URL로 세션을 생성합니다.
+                    프로젝트별로 세션 버전과 결과 이력을 관리합니다.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-[#E7E7E7] bg-[#EEFDFE] p-4">
                   <p className="text-xs uppercase tracking-[0.24em] text-gray-400">
-                    파이프라인
+                    자동화
                   </p>
                   <p className="mt-3 text-sm text-gray-200">
-                    분석, Terraform, 비용 계산 단계를 순서대로 실행합니다.
+                    분석, Terraform, 비용 계산을 서비스 파이프라인으로 실행합니다.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-[#E7E7E7] bg-white p-4">
                   <p className="text-xs uppercase tracking-[0.24em] text-gray-400">
-                    결과
+                    비교
                   </p>
                   <p className="mt-3 text-sm text-gray-200">
-                    세션 상태와 구조화된 JSON 결과를 확인합니다.
+                    세션 버전 간 JSON, Terraform, 비용 차이를 비교할 수 있습니다.
                   </p>
                 </div>
               </div>
@@ -72,13 +75,24 @@ export default function LoginPage() {
 
             <section className="rounded-3xl border border-[#E7E7E7] bg-white p-8 text-gray-900 shadow-2xl shadow-[#49CDDF]/10 backdrop-blur sm:p-10">
               <div className="mx-auto max-w-md">
-                <h2 className="mt-4 text-3xl font-semibold">로그인</h2>
+                <h2 className="mt-4 text-3xl font-semibold">회원가입</h2>
                 <p className="mt-3 text-sm leading-6 text-gray-500">
-                  앱은 이제 이 화면에서 시작합니다. 로그인 후 메인 콘솔로
-                  이동합니다.
+                  기본 정보를 입력하면 바로 콘솔로 이동합니다.
                 </p>
 
                 <form className="mt-8 space-y-5" onSubmit={onSubmit}>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-gray-700">
+                      이름
+                    </span>
+                    <input
+                      className="h-12 w-full rounded-xl border border-gray-200 px-4 text-sm outline-none transition focus:border-[#49CDDF]"
+                      value={displayName}
+                      onChange={(event) => setDisplayName(event.target.value)}
+                      placeholder="이름을 입력해 주세요."
+                    />
+                  </label>
+
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-gray-700">
                       로그인 ID
@@ -88,6 +102,19 @@ export default function LoginPage() {
                       value={loginId}
                       onChange={(event) => setLoginId(event.target.value)}
                       placeholder="아이디를 입력해 주세요."
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-gray-700">
+                      이메일
+                    </span>
+                    <input
+                      type="email"
+                      className="h-12 w-full rounded-xl border border-gray-200 px-4 text-sm outline-none transition focus:border-[#49CDDF]"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="이메일을 입력해 주세요."
                     />
                   </label>
 
@@ -108,25 +135,26 @@ export default function LoginPage() {
                     type="submit"
                     className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#FF9900] px-4 text-sm font-semibold text-white transition hover:bg-[#e68a00]"
                   >
-                    로그인
+                    회원가입
                   </button>
+
                   <Link
-                    to="/signup"
+                    to="/"
                     className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition hover:border-[#49CDDF] hover:text-[#49CDDF]"
                   >
-                    회원가입 페이지로 이동
+                    로그인 페이지로 이동
                   </Link>
                 </form>
 
                 <p className="mt-6 text-center text-sm text-gray-500">
-                  계정이 없으면{" "}
+                  이미 계정이 있으면{" "}
                   <Link
-                    to="/signup"
+                    to="/"
                     className="font-semibold text-[#49CDDF] transition hover:text-[#36b8ca]"
                   >
-                    회원가입
+                    로그인
                   </Link>
-                  을 진행하세요.
+                  으로 돌아가세요.
                 </p>
               </div>
             </section>

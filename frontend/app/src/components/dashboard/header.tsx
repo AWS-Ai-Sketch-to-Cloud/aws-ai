@@ -1,6 +1,7 @@
 "use client"
 
 import { Cloud, Settings, Bell, User } from "lucide-react"
+import { useNavigate } from "react-router"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -23,7 +24,13 @@ const statusConfig = {
 }
 
 export function Header({ generationStatus }: HeaderProps) {
+  const navigate = useNavigate()
   const status = statusConfig[generationStatus]
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("stc-auth")
+    navigate("/")
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
@@ -79,7 +86,7 @@ export function Header({ generationStatus }: HeaderProps) {
               <DropdownMenuItem>프로필</DropdownMenuItem>
               <DropdownMenuItem>팀 설정</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>로그아웃</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout}>로그아웃</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -6,7 +6,7 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
 
-  const isActive = location.pathname === "/";
+  const isActive = location.pathname === "/dashboard";
 
   return (
     <aside
@@ -17,14 +17,14 @@ const AppSidebar: React.FC = () => {
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className={`flex py-8 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}>
-        <Link to="/" className="block">
+        <Link to="/dashboard" className="block">
           {isExpanded || isHovered || isMobileOpen ? (
             <div>
               <p className="text-lg font-semibold text-gray-900 dark:text-white">Sketch-to-Cloud</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">프로젝트 콘솔</p>
             </div>
           ) : (
-            <div className="rounded-lg bg-brand-500 p-2 text-white">
+            <div className="rounded-lg bg-[#FF9900] p-2 text-white">
               <GridIcon />
             </div>
           )}
@@ -40,7 +40,7 @@ const AppSidebar: React.FC = () => {
 
         <ul className="flex flex-col gap-2">
           <li>
-            <Link to="/" className={`menu-item group ${isActive ? "menu-item-active" : "menu-item-inactive"}`}>
+            <Link to="/dashboard" className={`menu-item group ${isActive ? "menu-item-active" : "menu-item-inactive"}`}>
               <span className={`menu-item-icon-size ${isActive ? "menu-item-icon-active" : "menu-item-icon-inactive"}`}>
                 <GridIcon />
               </span>

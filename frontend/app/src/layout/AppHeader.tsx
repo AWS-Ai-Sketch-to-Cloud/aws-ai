@@ -49,7 +49,7 @@ const AppHeader: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="rounded-md bg-brand-50 px-2 py-1 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
+          <span className="rounded-md bg-[#FFF3DF] px-2 py-1 text-xs font-medium text-[#FF9900]">
             API v2
           </span>
           <ThemeToggleButton />
