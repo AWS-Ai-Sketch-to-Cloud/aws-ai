@@ -7,14 +7,17 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
+import re
 import secrets
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from jsonschema import ValidationError, validate
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -47,6 +50,66 @@ def dt_to_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+LOGIN_ID_PATTERN = re.compile(r"^[a-z0-9]+$")
+SPECIAL_CHAR_PATTERN = re.compile(r"[^A-Za-z0-9]")
+REPEATED_DIGIT_PATTERN = re.compile(r"(\d)\1\1")
+
+
+def has_sequential_digits(raw: str, min_run: int = 3) -> bool:
+    digits = [int(ch) for ch in raw if ch.isdigit()]
+    if len(digits) < min_run:
+        return False
+
+    ascending_run = 1
+    descending_run = 1
+    for idx in range(1, len(digits)):
+        diff = digits[idx] - digits[idx - 1]
+        ascending_run = ascending_run + 1 if diff == 1 else 1
+        descending_run = descending_run + 1 if diff == -1 else 1
+        if ascending_run >= min_run or descending_run >= min_run:
+            return True
+    return False
+
+
+def validate_login_id(value: str) -> str:
+    if not LOGIN_ID_PATTERN.fullmatch(value):
+        raise ValueError("아이디는 영문 소문자와 숫자만 사용할 수 있습니다.")
+    return value
+
+
+def validate_password_rules(value: str) -> str:
+    if any(ch.isspace() for ch in value):
+        raise ValueError("비밀번호에는 공백을 사용할 수 없습니다.")
+    category_count = sum(
+        [
+            any(ch.isupper() for ch in value),
+            any(ch.islower() for ch in value),
+            any(ch.isdigit() for ch in value),
+            bool(SPECIAL_CHAR_PATTERN.search(value)),
+        ]
+    )
+    if category_count < 2:
+        raise ValueError("비밀번호는 대문자, 소문자, 숫자, 특수문자 중 2종류 이상을 포함해야 합니다.")
+    if REPEATED_DIGIT_PATTERN.search(value):
+        raise ValueError("비밀번호에는 동일한 숫자를 3자리 이상 연속으로 사용할 수 없습니다.")
+    if has_sequential_digits(value):
+        raise ValueError("비밀번호에는 연속된 숫자를 3자리 이상 사용할 수 없습니다.")
+    return value
+
+
+def extract_validation_message(exc: RequestValidationError) -> str:
+    messages: list[str] = []
+    for error in exc.errors():
+        message = error.get("msg")
+        if isinstance(message, str) and message.startswith("Value error, "):
+            message = message.removeprefix("Value error, ").strip()
+        if message and message not in messages:
+            messages.append(message)
+    if not messages:
+        return "입력값을 다시 확인해 주세요."
+    return "\n".join(messages)
 
 
 class ProjectCreateRequest(BaseModel):
@@ -153,6 +216,16 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     displayName: str = Field(min_length=1, max_length=100)
 
+    @field_validator("loginId")
+    @classmethod
+    def validate_register_login_id(cls, value: str) -> str:
+        return validate_login_id(value)
+
+    @field_validator("password")
+    @classmethod
+    def validate_register_password(cls, value: str) -> str:
+        return validate_password_rules(value)
+
 
 class RegisterResponse(BaseModel):
     userId: str
@@ -165,8 +238,8 @@ class RegisterResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    loginId: str = Field(min_length=3, max_length=50)
-    password: str = Field(min_length=8, max_length=128)
+    loginId: str = Field(min_length=1, max_length=50)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class LoginUser(BaseModel):
@@ -561,6 +634,13 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": extract_validation_message(exc)})
+
+
 @app.get("/")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
@@ -570,11 +650,11 @@ def healthcheck() -> dict[str, str]:
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     existing_email = db.scalars(select(User).where(User.email == payload.email).limit(1)).first()
     if existing_email:
-        raise HTTPException(status_code=409, detail="email already exists")
+        raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다.")
 
     existing_login = db.scalars(select(User).where(User.login_id == payload.loginId).limit(1)).first()
     if existing_login:
-        raise HTTPException(status_code=409, detail="loginId already exists")
+        raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
 
     user = User(
         login_id=payload.loginId,
@@ -605,10 +685,10 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     user = db.scalars(select(User).where(User.login_id == payload.loginId).limit(1)).first()
     if not user:
-        raise HTTPException(status_code=401, detail="invalid credentials")
+        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 일치하지 않습니다.")
 
     if not user or not user.password_hash or user.password_hash != hash_text(payload.password):
-        raise HTTPException(status_code=401, detail="invalid credentials")
+        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 일치하지 않습니다.")
 
     refresh_token = secrets.token_urlsafe(48)
     auth_session = AuthSession(
