@@ -18,6 +18,13 @@ AI가 인프라 구조를 이해하고 Terraform 코드로 변환해줍니다.
 
 ---
 
+# 프로젝트 폴더 구조
+
+- `backend/`: FastAPI, DB 스키마, Alembic, API 문서/스크립트
+- `frontend/`: 프론트엔드 개발 폴더
+
+---
+
 # 2. 문제 정의 (The Problems)
 
 ### 1️⃣ AWS 진입 장벽 문제

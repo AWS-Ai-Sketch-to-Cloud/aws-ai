@@ -1,0 +1,77 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="AWS architecture test sketch">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f7fbff"/>
+      <stop offset="100%" stop-color="#eef7ff"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#4a5a70"/>
+    </marker>
+    <style>
+      .title { font: 700 32px 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #142033; }
+      .subtitle { font: 400 18px 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #33455f; }
+      .label { font: 600 20px 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #142033; }
+      .small { font: 400 16px 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #33455f; }
+      .box { fill: #ffffff; stroke: #8ca0bb; stroke-width: 2; rx: 16; ry: 16; }
+      .zone { fill: #f2f8ff; stroke: #9ab4d4; stroke-width: 2; rx: 20; ry: 20; }
+      .line { stroke: #4a5a70; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .line2 { stroke: #4a5a70; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .icon { font: 700 24px 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #2166c2; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="900" fill="url(#bg)"/>
+  <text x="80" y="70" class="title">Sketch-to-Cloud 테스트용 아키텍처 이미지</text>
+  <text x="80" y="105" class="subtitle">UTF-8 한글 텍스트, 아이콘/선/텍스트 비겹침 검증용</text>
+
+  <rect x="70" y="150" width="1460" height="680" class="zone"/>
+  <text x="95" y="185" class="label">AWS Seoul (ap-northeast-2)</text>
+
+  <rect x="130" y="260" width="220" height="110" class="box"/>
+  <text x="160" y="305" class="icon">인터넷</text>
+  <text x="165" y="335" class="small">사용자 트래픽</text>
+
+  <rect x="430" y="250" width="240" height="120" class="box"/>
+  <text x="485" y="297" class="icon">Route 53</text>
+  <text x="472" y="327" class="small">DNS 라우팅</text>
+
+  <rect x="760" y="250" width="250" height="120" class="box"/>
+  <text x="805" y="297" class="icon">CloudFront</text>
+  <text x="808" y="327" class="small">CDN 캐시</text>
+
+  <rect x="1110" y="250" width="250" height="120" class="box"/>
+  <text x="1178" y="297" class="icon">ALB</text>
+  <text x="1160" y="327" class="small">Load Balancer</text>
+
+  <rect x="980" y="470" width="500" height="300" class="zone"/>
+  <text x="1005" y="503" class="label">VPC 내부 구성</text>
+
+  <rect x="1030" y="540" width="190" height="110" class="box"/>
+  <text x="1073" y="585" class="icon">EC2 A</text>
+  <text x="1066" y="615" class="small">Auto Scaling</text>
+
+  <rect x="1260" y="540" width="190" height="110" class="box"/>
+  <text x="1303" y="585" class="icon">EC2 B</text>
+  <text x="1296" y="615" class="small">Auto Scaling</text>
+
+  <rect x="1030" y="680" width="190" height="90" class="box"/>
+  <text x="1090" y="735" class="icon">RDS</text>
+
+  <rect x="1260" y="680" width="190" height="90" class="box"/>
+  <text x="1320" y="735" class="icon">S3</text>
+
+  <path d="M350 315 L430 310" class="line"/>
+  <path d="M670 310 L760 310" class="line"/>
+  <path d="M1010 310 L1110 310" class="line"/>
+
+  <path d="M1235 370 L1235 470" class="line2"/>
+  <path d="M1235 470 L1125 540" class="line2"/>
+  <path d="M1235 470 L1355 540" class="line2"/>
+
+  <path d="M1125 650 L1125 680" class="line2"/>
+  <path d="M1355 650 L1355 680" class="line2"/>
+
+  <text x="1200" y="445" class="small">HTTP/HTTPS</text>
+  <text x="1020" y="810" class="small">테스트 포인트: 텍스트/선/아이콘 간격 확보, 겹침 없음</text>
+</svg>

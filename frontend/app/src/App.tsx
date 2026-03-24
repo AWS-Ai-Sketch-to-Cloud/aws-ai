@@ -1,0 +1,20 @@
+import { BrowserRouter as Router, Route, Routes } from "react-router";
+import { ScrollToTop } from "./components/common/ScrollToTop";
+import LoginPage from "./pages/Auth/LoginPage";
+import SignupPage from "./pages/Auth/SignupPage";
+import SketchConsole from "./pages/Console/SketchConsole";
+import NotFound from "./pages/OtherPage/NotFound";
+
+export default function App() {
+  return (
+    <Router>
+      <ScrollToTop />
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/dashboard" element={<SketchConsole />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Router>
+  );
+}
