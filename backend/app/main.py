@@ -741,6 +741,8 @@ def create_project_session(
         status="CREATED",
     )
     db.add(session)
+    # Ensure session.id is materialized before writing session_events row.
+    db.flush()
     record_session_event(
         db,
         session,

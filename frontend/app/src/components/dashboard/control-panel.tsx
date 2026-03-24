@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useCallback } from "react"
 import { Upload, Sparkles, FileText, Image as ImageIcon, X } from "lucide-react"
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 
 interface ControlPanelProps {
-  onGenerate: () => void
+  onGenerate: (payload: { description: string; uploadedFile: File | null }) => void
   isGenerating: boolean
 }
 
@@ -49,33 +49,28 @@ export function ControlPanel({ onGenerate, isGenerating }: ControlPanelProps) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Text Input Card */}
       <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm font-medium text-foreground">
             <FileText className="h-4 w-4 text-primary" strokeWidth={1.5} />
-            인프라 요구사항
+            아키텍처 요구사항
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Textarea
-            placeholder="원하는 클라우드 아키텍처를 설명해주세요...&#10;&#10;예: 고가용성 웹 애플리케이션을 위한 AWS 인프라가 필요합니다. Auto Scaling 그룹, Application Load Balancer, RDS Multi-AZ 배포를 포함해주세요."
+            placeholder="예) 서울 리전에 ALB + AutoScaling + RDS Multi-AZ 구성을 생성해 주세요."
             className="min-h-[140px] resize-none border-border/50 bg-input/50 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-primary/50"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            자연어로 아키텍처 요구사항을 입력하세요
-          </p>
         </CardContent>
       </Card>
 
-      {/* Drag & Drop Upload Card */}
       <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm font-medium text-foreground">
             <ImageIcon className="h-4 w-4 text-primary" strokeWidth={1.5} />
-            아키텍처 스케치
+            스케치 파일
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -90,21 +85,11 @@ export function ControlPanel({ onGenerate, isGenerating }: ControlPanelProps) {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {uploadedFile.name}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {(uploadedFile.size / 1024).toFixed(1)} KB
-                  </p>
+                  <p className="truncate text-sm font-medium text-foreground">{uploadedFile.name}</p>
+                  <p className="text-[11px] text-muted-foreground">{(uploadedFile.size / 1024).toFixed(1)} KB</p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  onClick={removeFile}
-                >
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={removeFile}>
                   <X className="h-4 w-4" strokeWidth={1.5} />
-                  <span className="sr-only">파일 제거</span>
                 </Button>
               </div>
             </div>
@@ -113,45 +98,31 @@ export function ControlPanel({ onGenerate, isGenerating }: ControlPanelProps) {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`
-                relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-all duration-200
-                ${isDragging 
-                  ? "border-primary bg-primary/5" 
-                  : "border-border/50 hover:border-border hover:bg-secondary/20"
-                }
-              `}
+              className={`relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-all duration-200 ${
+                isDragging ? "border-primary bg-primary/5" : "border-border/50 hover:border-border hover:bg-secondary/20"
+              }`}
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/50">
                 <Upload className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
               </div>
-              <p className="mt-3 text-sm font-medium text-foreground">
-                스케치 파일 업로드
-              </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                PNG, JPG, PDF (최대 10MB)
-              </p>
-              <input
-                type="file"
-                accept="image/*,.pdf"
-                onChange={handleFileSelect}
-                className="absolute inset-0 cursor-pointer opacity-0"
-              />
+              <p className="mt-3 text-sm font-medium text-foreground">이미지/PDF 업로드</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">PNG, JPG, PDF</p>
+              <input type="file" accept="image/*,.pdf" onChange={handleFileSelect} className="absolute inset-0 cursor-pointer opacity-0" />
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Generate Button */}
       <Button
         size="lg"
         className="h-12 w-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-200"
-        onClick={onGenerate}
+        onClick={() => onGenerate({ description, uploadedFile })}
         disabled={isGenerating || (!description && !uploadedFile)}
       >
         {isGenerating ? (
           <>
             <Spinner className="mr-2 h-4 w-4" />
-            생성 중...
+            분석 중...
           </>
         ) : (
           <>
@@ -160,11 +131,6 @@ export function ControlPanel({ onGenerate, isGenerating }: ControlPanelProps) {
           </>
         )}
       </Button>
-
-      {/* Help Text */}
-      <p className="text-center text-[11px] text-muted-foreground">
-        텍스트 설명 또는 스케치 이미지를 입력하면 AI가 최적의 클라우드 아키텍처를 설계합니다
-      </p>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -11,34 +11,39 @@ interface ResultPanelProps {
   activeTab: "architecture" | "terraform" | "cost"
   setActiveTab: (tab: "architecture" | "terraform" | "cost") => void
   generationStatus: "idle" | "analyzing" | "complete" | "optimized"
+  terraformCode?: string | null
+  monthlyTotal?: number | null
+  costBreakdown?: Record<string, number> | null
+  region?: string | null
+  currency?: string | null
 }
 
-export function ResultPanel({ activeTab, setActiveTab, generationStatus }: ResultPanelProps) {
+export function ResultPanel({
+  activeTab,
+  setActiveTab,
+  generationStatus,
+  terraformCode,
+  monthlyTotal,
+  costBreakdown,
+  region,
+  currency,
+}: ResultPanelProps) {
   return (
     <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
       <CardHeader className="border-b border-border/30 pb-0">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
           <TabsList className="h-11 w-full justify-start gap-1 rounded-none border-none bg-transparent p-0">
-            <TabsTrigger
-              value="architecture"
-              className="relative h-11 rounded-none border-b-2 border-transparent bg-transparent px-4 text-sm font-medium text-muted-foreground transition-all data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="architecture" className="relative h-11 rounded-none border-b-2 border-transparent bg-transparent px-4 text-sm font-medium text-muted-foreground transition-all data-[state=active]:border-primary data-[state=active]:text-foreground">
               <GitBranch className="mr-2 h-4 w-4" strokeWidth={1.5} />
               아키텍처
             </TabsTrigger>
-            <TabsTrigger
-              value="terraform"
-              className="relative h-11 rounded-none border-b-2 border-transparent bg-transparent px-4 text-sm font-medium text-muted-foreground transition-all data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="terraform" className="relative h-11 rounded-none border-b-2 border-transparent bg-transparent px-4 text-sm font-medium text-muted-foreground transition-all data-[state=active]:border-primary data-[state=active]:text-foreground">
               <FileCode className="mr-2 h-4 w-4" strokeWidth={1.5} />
               Terraform
             </TabsTrigger>
-            <TabsTrigger
-              value="cost"
-              className="relative h-11 rounded-none border-b-2 border-transparent bg-transparent px-4 text-sm font-medium text-muted-foreground transition-all data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="cost" className="relative h-11 rounded-none border-b-2 border-transparent bg-transparent px-4 text-sm font-medium text-muted-foreground transition-all data-[state=active]:border-primary data-[state=active]:text-foreground">
               <Receipt className="mr-2 h-4 w-4" strokeWidth={1.5} />
-              비용 분석
+              비용
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -49,13 +54,20 @@ export function ResultPanel({ activeTab, setActiveTab, generationStatus }: Resul
             <ArchitectureDiagram generationStatus={generationStatus} />
           </TabsContent>
           <TabsContent value="terraform" className="m-0">
-            <TerraformCode generationStatus={generationStatus} />
+            <TerraformCode generationStatus={generationStatus} terraformCode={terraformCode} />
           </TabsContent>
           <TabsContent value="cost" className="m-0">
-            <CostAnalysis generationStatus={generationStatus} />
+            <CostAnalysis
+              generationStatus={generationStatus}
+              monthlyTotal={monthlyTotal}
+              costBreakdown={costBreakdown}
+              region={region}
+              currency={currency}
+            />
           </TabsContent>
         </Tabs>
       </CardContent>
     </Card>
   )
 }
+
