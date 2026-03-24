@@ -32,20 +32,27 @@ cd backend
 - 현재는 URL 발급 스텁 동작
 
 5) `POST /api/projects`
+- 헤더: `Authorization: Bearer {accessToken}`
 
 6) `POST /api/projects/{projectId}/sessions`
+- 헤더: `Authorization: Bearer {accessToken}`
 
 7) `PATCH /api/sessions/{sessionId}/status`
+- 헤더: `Authorization: Bearer {accessToken}`
 
 8) `POST /api/sessions/{sessionId}/architecture`
+- 헤더: `Authorization: Bearer {accessToken}`
 
 9) `POST /api/sessions/{sessionId}/terraform`
+- 헤더: `Authorization: Bearer {accessToken}`
 - 기대: `status=GENERATED`, `contractVersion="v2"`
 
 10) `POST /api/sessions/{sessionId}/cost`
+- 헤더: `Authorization: Bearer {accessToken}`
 - 기대: `status=COST_CALCULATED`, `contractVersion="v2"`
 
 11) `GET /api/sessions/{sessionId}`
+- 헤더: `Authorization: Bearer {accessToken}`
 - 기대: `architecture/terraform/cost` 모두 존재
 
 12) `POST /api/auth/logout`

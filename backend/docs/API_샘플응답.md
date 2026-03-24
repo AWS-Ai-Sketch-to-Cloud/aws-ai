@@ -76,8 +76,11 @@
 ```json
 {
   "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
+  "projectId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f4",
   "versionNo": 1,
-  "status": "CREATED"
+  "status": "CREATED",
+  "createdAt": "2026-03-23T09:00:00Z",
+  "contractVersion": "v2"
 }
 ```
 
@@ -88,7 +91,8 @@
 ```json
 {
   "sessionId": "ce8b3fd4-aac0-4d9c-a886-8adf163cb1f5",
-  "status": "ANALYZING"
+  "status": "ANALYZING",
+  "contractVersion": "v2"
 }
 ```
 

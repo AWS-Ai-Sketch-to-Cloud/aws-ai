@@ -25,6 +25,7 @@ from app.models import (
     AuthIdentity,
     AuthSession,
     Project,
+    SessionEvent,
     SessionArchitecture,
     SessionCostResult,
     SessionTerraformResult,
@@ -55,12 +56,23 @@ class ProjectCreateRequest(BaseModel):
 class ProjectCreateResponse(BaseModel):
     projectId: str
     name: str
+    description: str | None = None
+    ownerId: str | None = None
+    createdAt: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
 
 
 class ProjectListItem(BaseModel):
     projectId: str
     name: str
     description: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class ProjectListResponse(BaseModel):
+    items: list[ProjectListItem]
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
 
 
 class SessionCreateRequest(BaseModel):
@@ -83,8 +95,25 @@ class SessionCreateResponse(BaseModel):
 
 class SessionCreateApiResponse(BaseModel):
     sessionId: str
+    projectId: str
     versionNo: int
     status: str
+    createdAt: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class SessionListItem(BaseModel):
+    sessionId: str
+    versionNo: int
+    inputType: str
+    status: str
+    createdAt: str
+    updatedAt: str
+
+
+class SessionListResponse(BaseModel):
+    items: list[SessionListItem]
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
 
 
 class AnalyzeRequest(BaseModel):
@@ -200,6 +229,59 @@ class SessionStatusPatchRequest(BaseModel):
     errorMessage: str | None = Field(default=None, max_length=2000)
 
 
+class SessionStatusPatchResponse(BaseModel):
+    sessionId: str
+    status: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class SessionResultResponse(BaseModel):
+    sessionId: str
+    status: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class SessionDetailArchitecture(BaseModel):
+    schemaVersion: str
+    architectureJson: dict[str, Any]
+
+
+class SessionDetailTerraform(BaseModel):
+    validationStatus: str
+    terraformCode: str
+    validationOutput: str | None = None
+
+
+class SessionDetailCost(BaseModel):
+    currency: str
+    region: str
+    assumptionJson: dict[str, Any]
+    monthlyTotal: float
+    costBreakdownJson: dict[str, Any]
+
+
+class SessionDetailError(BaseModel):
+    code: str | None = None
+    message: str | None = None
+
+
+class SessionDetailResponse(BaseModel):
+    sessionId: str
+    projectId: str
+    versionNo: int
+    inputType: str
+    inputText: str | None = None
+    inputImageUrl: str | None = None
+    status: str
+    architecture: SessionDetailArchitecture | None = None
+    terraform: SessionDetailTerraform | None = None
+    cost: SessionDetailCost | None = None
+    error: SessionDetailError | None = None
+    createdAt: str
+    updatedAt: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
 class ErrorPayload(BaseModel):
     code: Literal["PARSE_ERROR", "SCHEMA_ERROR", "TIMEOUT_ERROR", "INTERNAL_ERROR"]
     message: str
@@ -234,6 +316,55 @@ def user_id_from_auth_header(authorization: str | None) -> UUID:
         raise HTTPException(status_code=401, detail="invalid access token") from e
 
 
+SESSION_TRANSITIONS: dict[str, set[str]] = {
+    "CREATED": {"ANALYZING", "ANALYZED", "FAILED"},
+    "ANALYZING": {"ANALYZED", "FAILED"},
+    "ANALYZED": {"GENERATING_TERRAFORM", "FAILED"},
+    "GENERATING_TERRAFORM": {"GENERATED", "FAILED"},
+    "GENERATED": {"COST_CALCULATED", "FAILED"},
+    "COST_CALCULATED": {"FAILED"},
+    "FAILED": {"ANALYZING", "ANALYZED", "GENERATING_TERRAFORM"},
+}
+
+
+def record_session_event(
+    db: Session, session: AppSession, event_type: str, payload: dict[str, Any] | None = None
+) -> None:
+    db.add(SessionEvent(session_id=session.id, event_type=event_type, payload_json=payload))
+
+
+def transition_session_status(
+    db: Session,
+    session: AppSession,
+    next_status: str,
+    *,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    current_status = session.status
+    allowed = SESSION_TRANSITIONS.get(current_status, set())
+    if current_status != next_status and next_status not in allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=f"invalid status transition: {current_status} -> {next_status}",
+        )
+
+    session.status = next_status
+    session.error_code = error_code
+    session.error_message = error_message
+    session.updated_at = datetime.now(timezone.utc)
+    record_session_event(
+        db,
+        session,
+        "STATUS_CHANGED",
+        {
+            "from": current_status,
+            "to": next_status,
+            "errorCode": error_code,
+        },
+    )
+
+
 def get_session_or_404(db: Session, session_id: str) -> AppSession:
     try:
         sid = UUID(session_id)
@@ -244,6 +375,22 @@ def get_session_or_404(db: Session, session_id: str) -> AppSession:
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
     return session
+
+
+def ensure_session_access(session: AppSession, current_user: User) -> None:
+    if session.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+
+def get_current_user(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> User:
+    user_id = user_id_from_auth_header(authorization)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="user not found")
+    return user
 
 
 app = FastAPI(title="Sketch-to-Cloud API", version=CONTRACT_VERSION)
@@ -340,15 +487,7 @@ def logout(payload: LogoutRequest, db: Session = Depends(get_db)) -> LogoutRespo
 
 
 @app.get("/api/users/me", response_model=MeResponse)
-def get_me(
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-) -> MeResponse:
-    user_id = user_id_from_auth_header(authorization)
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="user not found")
-
+def get_me(user: User = Depends(get_current_user)) -> MeResponse:
     return MeResponse(
         userId=str(user.id),
         loginId=user.login_id,
@@ -372,23 +511,52 @@ def upload_image_stub(payload: UploadImageRequest) -> UploadImageResponse:
 
 
 @app.post("/api/projects", response_model=ProjectCreateResponse)
-def create_project(payload: ProjectCreateRequest, db: Session = Depends(get_db)) -> ProjectCreateResponse:
-    project = Project(name=payload.name, description=payload.description)
+def create_project(
+    payload: ProjectCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProjectCreateResponse:
+    project = Project(name=payload.name, description=payload.description, owner_id=current_user.id)
     db.add(project)
     db.commit()
     db.refresh(project)
-    return ProjectCreateResponse(projectId=str(project.id), name=project.name)
+    return ProjectCreateResponse(
+        projectId=str(project.id),
+        name=project.name,
+        description=project.description,
+        ownerId=str(project.owner_id) if project.owner_id else None,
+        createdAt=dt_to_iso(project.created_at),
+    )
 
 
-@app.get("/api/projects", response_model=list[ProjectListItem])
-def list_projects(db: Session = Depends(get_db)) -> list[ProjectListItem]:
-    rows = db.scalars(select(Project).order_by(Project.created_at.desc())).all()
-    return [ProjectListItem(projectId=str(p.id), name=p.name, description=p.description) for p in rows]
+@app.get("/api/projects", response_model=ProjectListResponse)
+def list_projects(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProjectListResponse:
+    rows = db.scalars(
+        select(Project).where(Project.owner_id == current_user.id).order_by(Project.created_at.desc())
+    ).all()
+    return ProjectListResponse(
+        items=[
+            ProjectListItem(
+                projectId=str(p.id),
+                name=p.name,
+                description=p.description,
+                createdAt=dt_to_iso(p.created_at),
+                updatedAt=dt_to_iso(p.updated_at),
+            )
+            for p in rows
+        ]
+    )
 
 
 @app.post("/api/projects/{project_id}/sessions", response_model=SessionCreateApiResponse)
 def create_project_session(
-    project_id: str, payload: SessionCreateApiRequest, db: Session = Depends(get_db)
+    project_id: str,
+    payload: SessionCreateApiRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> SessionCreateApiResponse:
     try:
         pid = UUID(project_id)
@@ -398,6 +566,8 @@ def create_project_session(
     project = db.get(Project, pid)
     if not project:
         raise HTTPException(status_code=404, detail="project not found")
+    if project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="forbidden")
 
     latest = db.scalars(
         select(AppSession).where(AppSession.project_id == pid).order_by(AppSession.version_no.desc()).limit(1)
@@ -413,13 +583,33 @@ def create_project_session(
         status="CREATED",
     )
     db.add(session)
+    record_session_event(
+        db,
+        session,
+        "SESSION_CREATED",
+        {
+            "projectId": str(project.id),
+            "versionNo": next_version,
+            "inputType": payload.inputType,
+        },
+    )
     db.commit()
     db.refresh(session)
-    return SessionCreateApiResponse(sessionId=str(session.id), versionNo=session.version_no, status=session.status)
+    return SessionCreateApiResponse(
+        sessionId=str(session.id),
+        projectId=str(session.project_id),
+        versionNo=session.version_no,
+        status=session.status,
+        createdAt=dt_to_iso(session.created_at),
+    )
 
 
-@app.get("/api/projects/{project_id}/sessions")
-def list_project_sessions(project_id: str, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+@app.get("/api/projects/{project_id}/sessions", response_model=SessionListResponse)
+def list_project_sessions(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionListResponse:
     try:
         pid = UUID(project_id)
     except ValueError as e:
@@ -428,41 +618,45 @@ def list_project_sessions(project_id: str, db: Session = Depends(get_db)) -> lis
     project = db.get(Project, pid)
     if not project:
         raise HTTPException(status_code=404, detail="project not found")
+    if project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="forbidden")
 
     rows = db.scalars(
         select(AppSession).where(AppSession.project_id == pid).order_by(AppSession.version_no.desc())
     ).all()
-    return [
-        {
-            "sessionId": str(s.id),
-            "versionNo": s.version_no,
-            "status": s.status,
-            "createdAt": dt_to_iso(s.created_at),
-        }
-        for s in rows
-    ]
+    return SessionListResponse(
+        items=[
+            SessionListItem(
+                sessionId=str(s.id),
+                versionNo=s.version_no,
+                inputType=s.input_type,
+                status=s.status,
+                createdAt=dt_to_iso(s.created_at),
+                updatedAt=dt_to_iso(s.updated_at),
+            )
+            for s in rows
+        ]
+    )
 
 
-@app.post("/api/sessions/{session_id}/architecture")
+@app.post("/api/sessions/{session_id}/architecture", response_model=SessionResultResponse)
 def save_architecture(
-    session_id: str, payload: ArchitectureSaveRequest, db: Session = Depends(get_db)
-) -> dict[str, Any]:
+    session_id: str,
+    payload: ArchitectureSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionResultResponse:
     session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
 
     try:
         validate(instance=payload.architectureJson, schema=ARCH_SCHEMA)
     except ValidationError as e:
-        session.status = "FAILED"
-        session.error_code = "SCHEMA_ERROR"
-        session.error_message = e.message
-        session.updated_at = datetime.now(timezone.utc)
+        transition_session_status(db, session, "FAILED", error_code="SCHEMA_ERROR", error_message=e.message)
         db.commit()
         raise HTTPException(status_code=422, detail=f"schema validation failed: {e.message}") from e
 
-    session.status = "ANALYZED"
-    session.error_code = None
-    session.error_message = None
-    session.updated_at = datetime.now(timezone.utc)
+    transition_session_status(db, session, "ANALYZED")
 
     architecture = db.scalars(
         select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
@@ -476,13 +670,24 @@ def save_architecture(
         )
         db.add(architecture)
 
+    record_session_event(
+        db,
+        session,
+        "ARCHITECTURE_SAVED",
+        {"schemaVersion": payload.schemaVersion},
+    )
     db.commit()
-    return {"sessionId": str(session.id), "status": session.status}
+    return SessionResultResponse(sessionId=str(session.id), status=session.status)
 
 
-@app.get("/api/sessions/{session_id}")
-def get_session_detail(session_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+@app.get("/api/sessions/{session_id}", response_model=SessionDetailResponse)
+def get_session_detail(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionDetailResponse:
     session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
     architecture = db.scalars(
         select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
     ).first()
@@ -495,69 +700,83 @@ def get_session_detail(session_id: str, db: Session = Depends(get_db)) -> dict[s
     if session.error_code or session.error_message:
         error = {"code": session.error_code, "message": session.error_message}
 
-    return {
-        "sessionId": str(session.id),
-        "projectId": str(session.project_id),
-        "versionNo": session.version_no,
-        "inputType": session.input_type,
-        "inputText": session.input_text,
-        "status": session.status,
-        "architecture": (
-            {
-                "schemaVersion": architecture.schema_version,
-                "architectureJson": architecture.architecture_json,
-            }
+    return SessionDetailResponse(
+        sessionId=str(session.id),
+        projectId=str(session.project_id),
+        versionNo=session.version_no,
+        inputType=session.input_type,
+        inputText=session.input_text,
+        inputImageUrl=session.input_image_url,
+        status=session.status,
+        architecture=(
+            SessionDetailArchitecture(
+                schemaVersion=architecture.schema_version,
+                architectureJson=architecture.architecture_json,
+            )
             if architecture
             else None
         ),
-        "terraform": (
-            {
-                "validationStatus": terraform_result.validation_status,
-                "terraformCode": terraform_result.terraform_code,
-                "validationOutput": terraform_result.validation_output,
-            }
+        terraform=(
+            SessionDetailTerraform(
+                validationStatus=terraform_result.validation_status,
+                terraformCode=terraform_result.terraform_code,
+                validationOutput=terraform_result.validation_output,
+            )
             if terraform_result
             else None
         ),
-        "cost": (
-            {
-                "currency": cost_result.currency,
-                "region": cost_result.region,
-                "monthlyTotal": float(cost_result.monthly_total),
-                "costBreakdownJson": cost_result.cost_breakdown_json,
-                "assumptionJson": cost_result.assumption_json,
-            }
+        cost=(
+            SessionDetailCost(
+                currency=cost_result.currency,
+                region=cost_result.region,
+                monthlyTotal=float(cost_result.monthly_total),
+                costBreakdownJson=cost_result.cost_breakdown_json,
+                assumptionJson=cost_result.assumption_json,
+            )
             if cost_result
             else None
         ),
-        "error": error,
-    }
+        error=SessionDetailError(**error) if error else None,
+        createdAt=dt_to_iso(session.created_at),
+        updatedAt=dt_to_iso(session.updated_at),
+    )
 
 
-@app.patch("/api/sessions/{session_id}/status")
+@app.patch("/api/sessions/{session_id}/status", response_model=SessionStatusPatchResponse)
 def patch_session_status(
-    session_id: str, payload: SessionStatusPatchRequest, db: Session = Depends(get_db)
-) -> dict[str, Any]:
+    session_id: str,
+    payload: SessionStatusPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionStatusPatchResponse:
     session = get_session_or_404(db, session_id)
-    session.status = payload.status
-    session.error_code = payload.errorCode
-    session.error_message = payload.errorMessage
-    session.updated_at = datetime.now(timezone.utc)
+    ensure_session_access(session, current_user)
+    transition_session_status(
+        db,
+        session,
+        payload.status,
+        error_code=payload.errorCode,
+        error_message=payload.errorMessage,
+    )
     db.commit()
-    return {"sessionId": str(session.id), "status": session.status}
+    return SessionStatusPatchResponse(sessionId=str(session.id), status=session.status)
 
 
 @app.post("/api/sessions/{session_id}/terraform", response_model=TerraformGenerateResponse)
-def generate_terraform(session_id: str, db: Session = Depends(get_db)) -> TerraformGenerateResponse:
+def generate_terraform(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TerraformGenerateResponse:
     session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
     architecture = db.scalars(
         select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
     ).first()
     if not architecture:
         raise HTTPException(status_code=409, detail="architecture not found for this session")
 
-    session.status = "GENERATING_TERRAFORM"
-    session.updated_at = datetime.now(timezone.utc)
+    transition_session_status(db, session, "GENERATING_TERRAFORM")
     db.commit()
 
     try:
@@ -579,10 +798,13 @@ def generate_terraform(session_id: str, db: Session = Depends(get_db)) -> Terraf
             )
             db.add(terraform_result)
 
-        session.status = "GENERATED"
-        session.error_code = None
-        session.error_message = None
-        session.updated_at = datetime.now(timezone.utc)
+        transition_session_status(db, session, "GENERATED")
+        record_session_event(
+            db,
+            session,
+            "TERRAFORM_GENERATED",
+            {"validationStatus": validation_status},
+        )
         db.commit()
         return TerraformGenerateResponse(
             sessionId=str(session.id),
@@ -593,17 +815,19 @@ def generate_terraform(session_id: str, db: Session = Depends(get_db)) -> Terraf
             contractVersion=CONTRACT_VERSION,
         )
     except Exception as e:  # noqa: BLE001
-        session.status = "FAILED"
-        session.error_code = "INTERNAL_ERROR"
-        session.error_message = str(e)
-        session.updated_at = datetime.now(timezone.utc)
+        transition_session_status(db, session, "FAILED", error_code="INTERNAL_ERROR", error_message=str(e))
         db.commit()
         raise HTTPException(status_code=500, detail="terraform generation failed") from e
 
 
 @app.post("/api/sessions/{session_id}/cost", response_model=CostCalculateResponse)
-def calculate_cost(session_id: str, db: Session = Depends(get_db)) -> CostCalculateResponse:
+def calculate_cost(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CostCalculateResponse:
     session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
     architecture = db.scalars(
         select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
     ).first()
@@ -630,10 +854,13 @@ def calculate_cost(session_id: str, db: Session = Depends(get_db)) -> CostCalcul
             )
             db.add(cost_result)
 
-        session.status = "COST_CALCULATED"
-        session.error_code = None
-        session.error_message = None
-        session.updated_at = datetime.now(timezone.utc)
+        transition_session_status(db, session, "COST_CALCULATED")
+        record_session_event(
+            db,
+            session,
+            "COST_CALCULATED",
+            {"monthlyTotal": cost["monthly_total"], "region": cost["region"]},
+        )
         db.commit()
         return CostCalculateResponse(
             sessionId=str(session.id),
@@ -646,10 +873,7 @@ def calculate_cost(session_id: str, db: Session = Depends(get_db)) -> CostCalcul
             contractVersion=CONTRACT_VERSION,
         )
     except Exception as e:  # noqa: BLE001
-        session.status = "FAILED"
-        session.error_code = "INTERNAL_ERROR"
-        session.error_message = str(e)
-        session.updated_at = datetime.now(timezone.utc)
+        transition_session_status(db, session, "FAILED", error_code="INTERNAL_ERROR", error_message=str(e))
         db.commit()
         raise HTTPException(status_code=500, detail="cost calculation failed") from e
 
@@ -693,10 +917,9 @@ def create_session(payload: SessionCreateRequest, db: Session = Depends(get_db))
 @app.post("/sessions/{session_id}/analyze", response_model=AnalyzeResponse)
 def analyze_session(session_id: str, payload: AnalyzeRequest, db: Session = Depends(get_db)) -> AnalyzeResponse:
     session = get_session_or_404(db, session_id)
-    session.status = "ANALYZING"
+    transition_session_status(db, session, "ANALYZING")
     session.input_text = payload.input_text
     session.input_type = "SKETCH" if payload.input_type == "sketch" else "TEXT"
-    session.updated_at = datetime.now(timezone.utc)
     db.commit()
 
     try:
@@ -716,24 +939,16 @@ def analyze_session(session_id: str, payload: AnalyzeRequest, db: Session = Depe
             )
             db.add(architecture)
 
-        session.status = "GENERATED"
-        session.error_code = None
-        session.error_message = None
-        session.updated_at = datetime.now(timezone.utc)
+        transition_session_status(db, session, "ANALYZED")
+        record_session_event(db, session, "ARCHITECTURE_GENERATED", {"schemaVersion": CONTRACT_VERSION})
         db.commit()
         return AnalyzeResponse(session_id=session_id, status="generated", parsed_json=parsed)
     except AIParseError as e:
-        session.status = "FAILED"
-        session.error_code = e.code
-        session.error_message = e.message
-        session.updated_at = datetime.now(timezone.utc)
+        transition_session_status(db, session, "FAILED", error_code=e.code, error_message=e.message)
         db.commit()
         return AnalyzeResponse(session_id=session_id, status="failed", error=ErrorPayload(code=e.code, message=e.message))
     except Exception as e:  # noqa: BLE001
-        session.status = "FAILED"
-        session.error_code = "INTERNAL_ERROR"
-        session.error_message = str(e)
-        session.updated_at = datetime.now(timezone.utc)
+        transition_session_status(db, session, "FAILED", error_code="INTERNAL_ERROR", error_message=str(e))
         db.commit()
         return AnalyzeResponse(
             session_id=session_id, status="failed", error=ErrorPayload(code="INTERNAL_ERROR", message=str(e))
