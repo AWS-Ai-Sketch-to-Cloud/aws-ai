@@ -2,7 +2,7 @@
 
 목적:
 - 팀원이 같은 순서로 v2 API 동작을 빠르게 확인
-- 흐름: `auth -> upload -> project -> session -> status -> architecture -> terraform -> cost -> detail -> logout`
+- 흐름: `auth -> upload -> project -> session -> status -> architecture -> terraform -> cost -> compare -> detail -> logout`
 
 전제:
 - 서버 실행: `uvicorn app.main:app --reload`
@@ -32,21 +32,32 @@ cd backend
 - 현재는 URL 발급 스텁 동작
 
 5) `POST /api/projects`
+- 헤더: `Authorization: Bearer {accessToken}`
 
 6) `POST /api/projects/{projectId}/sessions`
+- 헤더: `Authorization: Bearer {accessToken}`
 
 7) `PATCH /api/sessions/{sessionId}/status`
+- 헤더: `Authorization: Bearer {accessToken}`
 
 8) `POST /api/sessions/{sessionId}/architecture`
+- 헤더: `Authorization: Bearer {accessToken}`
 
 9) `POST /api/sessions/{sessionId}/terraform`
+- 헤더: `Authorization: Bearer {accessToken}`
 - 기대: `status=GENERATED`, `contractVersion="v2"`
 
 10) `POST /api/sessions/{sessionId}/cost`
+- 헤더: `Authorization: Bearer {accessToken}`
 - 기대: `status=COST_CALCULATED`, `contractVersion="v2"`
 
 11) `GET /api/sessions/{sessionId}`
+- 헤더: `Authorization: Bearer {accessToken}`
 - 기대: `architecture/terraform/cost` 모두 존재
 
-12) `POST /api/auth/logout`
+12) `GET /api/sessions/{sessionId}/compare`
+- 헤더: `Authorization: Bearer {accessToken}`
+- 기대: 이전 버전 세션이 있으면 `jsonDiff/terraformDiff/costDiff` 반환
+
+13) `POST /api/auth/logout`
 - 기대: `success=true`, `contractVersion="v2"`

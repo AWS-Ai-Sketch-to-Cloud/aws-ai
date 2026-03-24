@@ -300,6 +300,67 @@
 }
 ```
 
+### 4-6) `GET /api/sessions/{sessionId}/compare`
+
+설명:
+- 현재 세션과 이전 세션(또는 `baseSessionId`로 지정한 세션)의 결과를 비교
+- 이력 비교는 JSON diff, Terraform diff, 비용 delta를 함께 반환
+
+응답 예시:
+
+```json
+{
+  "baseSession": {
+    "sessionId": "uuid",
+    "versionNo": 1,
+    "status": "COST_CALCULATED",
+    "createdAt": "2026-03-20T10:00:00Z"
+  },
+  "targetSession": {
+    "sessionId": "uuid",
+    "versionNo": 2,
+    "status": "COST_CALCULATED",
+    "createdAt": "2026-03-20T10:05:00Z"
+  },
+  "jsonDiff": [
+    {
+      "path": "$.ec2.count",
+      "changeType": "changed",
+      "before": 1,
+      "after": 2
+    }
+  ],
+  "terraformDiff": {
+    "changed": true,
+    "diff": "--- base.tf\n+++ target.tf\n@@ ..."
+  },
+  "costDiff": {
+    "changed": true,
+    "monthlyTotal": {
+      "before": 18000,
+      "after": 30000,
+      "delta": 12000
+    },
+    "breakdown": {
+      "ec2": {
+        "before": 0,
+        "after": 12000,
+        "delta": 12000
+      }
+    },
+    "assumptionsChanged": [
+      {
+        "path": "$.ec2_count",
+        "changeType": "changed",
+        "before": 1,
+        "after": 2
+      }
+    ]
+  },
+  "contractVersion": "v2"
+}
+```
+
 ## 5. 결과 저장 계약
 
 ### 5-1) `POST /api/sessions/{sessionId}/architecture`

@@ -1,7 +1,16 @@
+<<<<<<< HEAD
 import { useState } from "react";
 import { Header } from "@/components/dashboard/header";
 import { ControlPanel } from "@/components/dashboard/control-panel";
 import { ResultPanel } from "@/components/dashboard/result-panel";
+=======
+import { BrowserRouter as Router, Routes, Route } from "react-router";
+import NotFound from "./pages/OtherPage/NotFound";
+import AppLayout from "./layout/AppLayout";
+import { ScrollToTop } from "./components/common/ScrollToTop";
+import SketchConsole from "./pages/Console/SketchConsole";
+import LoginPage from "./pages/Auth/LoginPage";
+>>>>>>> 126ab9bd0496d9b110b600c11f4997c7cef48919
 
 export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -22,6 +31,7 @@ export default function App() {
   };
 
   return (
+<<<<<<< HEAD
     <div className="min-h-screen bg-background">
       <Header generationStatus={generationStatus} />
 
@@ -36,5 +46,19 @@ export default function App() {
         </div>
       </main>
     </div>
+=======
+    <>
+      <Router>
+        <ScrollToTop />
+        <Routes>
+          <Route index path="/" element={<LoginPage />} />
+          <Route element={<AppLayout />}>
+            <Route path="/console" element={<SketchConsole />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Router>
+    </>
+>>>>>>> 126ab9bd0496d9b110b600c11f4997c7cef48919
   );
 }
