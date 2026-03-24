@@ -112,6 +112,58 @@ def extract_validation_message(exc: RequestValidationError) -> str:
     return "\n".join(messages)
 
 
+# Override validation helpers with normalized Korean messages and a restricted special-char allowlist.
+LOGIN_ID_PATTERN = re.compile(r"^[a-z0-9]+$")
+ALLOWED_PASSWORD_SPECIALS = r"!@#$%^&*()\-_=\+\[\]\{\};:,\.\?/\|"
+SPECIAL_CHAR_PATTERN = re.compile(rf"[{ALLOWED_PASSWORD_SPECIALS}]")
+ALLOWED_PASSWORD_PATTERN = re.compile(rf"^[A-Za-z\d{ALLOWED_PASSWORD_SPECIALS}]+$")
+REPEATED_DIGIT_PATTERN = re.compile(r"(\d)\1\1")
+
+
+def validate_login_id(value: str) -> str:
+    if not LOGIN_ID_PATTERN.fullmatch(value):
+        raise ValueError("아이디는 영문 소문자와 숫자만 사용할 수 있습니다.")
+    return value
+
+
+def validate_password_rules(value: str) -> str:
+    if any(ch.isspace() for ch in value):
+        raise ValueError("비밀번호에는 공백을 사용할 수 없습니다.")
+    if not ALLOWED_PASSWORD_PATTERN.fullmatch(value):
+        raise ValueError(
+            "비밀번호 특수문자는 ! @ # $ % ^ & * ( ) - _ = + [ ] { } ; : , . ? / | 만 사용할 수 있습니다."
+        )
+
+    category_count = sum(
+        [
+            any(ch.isupper() for ch in value),
+            any(ch.islower() for ch in value),
+            any(ch.isdigit() for ch in value),
+            bool(SPECIAL_CHAR_PATTERN.search(value)),
+        ]
+    )
+    if category_count < 2:
+        raise ValueError("비밀번호는 대문자, 소문자, 숫자, 특수문자 중 2종류 이상을 포함해야 합니다.")
+    if REPEATED_DIGIT_PATTERN.search(value):
+        raise ValueError("비밀번호에는 동일한 숫자를 3자리 이상 연속으로 사용할 수 없습니다.")
+    if has_sequential_digits(value):
+        raise ValueError("비밀번호에는 연속된 숫자를 3자리 이상 사용할 수 없습니다.")
+    return value
+
+
+def extract_validation_message(exc: RequestValidationError) -> str:
+    messages: list[str] = []
+    for error in exc.errors():
+        message = error.get("msg")
+        if isinstance(message, str) and message.startswith("Value error, "):
+            message = message.removeprefix("Value error, ").strip()
+        if message and message not in messages:
+            messages.append(message)
+    if not messages:
+        return "입력값을 다시 확인해 주세요."
+    return "\n".join(messages)
+
+
 class ProjectCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str | None = None

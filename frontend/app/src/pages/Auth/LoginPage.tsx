@@ -82,7 +82,12 @@ export default function LoginPage() {
       navigate("/dashboard");
     } catch (error) {
       setFieldErrors({
-        auth: error instanceof Error ? error.message : "로그인 중 오류가 발생했습니다.",
+        auth:
+          error instanceof TypeError
+            ? "서버에 연결할 수 없습니다. 백엔드 실행 상태를 확인해 주세요."
+            : error instanceof Error
+              ? error.message
+              : "로그인 중 오류가 발생했습니다.",
       });
     } finally {
       setIsSubmitting(false);

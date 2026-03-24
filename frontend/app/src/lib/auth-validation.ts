@@ -1,5 +1,8 @@
 const loginIdPattern = /^[a-z0-9]+$/;
-const specialCharPattern = /[^A-Za-z0-9]/;
+const allowedSpecialChars = "!@#$%^&*()-_=+[]{};:,.?/|";
+const escapedAllowedSpecialChars = allowedSpecialChars.replace(/[\\^$*+?.()|[\]{}-]/g, "\\$&");
+const specialCharPattern = new RegExp(`[${escapedAllowedSpecialChars}]`);
+const allowedPasswordPattern = new RegExp(`^[A-Za-z\\d${escapedAllowedSpecialChars}]+$`);
 const repeatedDigitPattern = /(\d)\1\1/;
 const whitespacePattern = /\s/;
 
@@ -47,6 +50,10 @@ export function validatePassword(password: string): string | null {
 
   if (whitespacePattern.test(password)) {
     return "비밀번호에는 공백을 사용할 수 없습니다.";
+  }
+
+  if (!allowedPasswordPattern.test(password)) {
+    return "비밀번호 특수문자는 ! @ # $ % ^ & * ( ) - _ = + [ ] { } ; : , . ? / | 만 사용할 수 있습니다.";
   }
 
   if (password.length < 8 || password.length > 128) {

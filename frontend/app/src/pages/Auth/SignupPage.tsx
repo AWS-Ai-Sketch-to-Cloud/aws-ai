@@ -77,9 +77,11 @@ export default function SignupPage() {
     } catch (error) {
       setFieldErrors({
         submit:
-          error instanceof Error
-            ? error.message
-            : "회원가입 중 오류가 발생했습니다.",
+          error instanceof TypeError
+            ? "서버에 연결할 수 없습니다. 백엔드 실행 상태를 확인해 주세요."
+            : error instanceof Error
+              ? error.message
+              : "회원가입 중 오류가 발생했습니다.",
       });
     } finally {
       setIsSubmitting(false);
@@ -95,8 +97,8 @@ export default function SignupPage() {
       <div className="relative min-h-screen overflow-hidden bg-[#FDFDFD] px-6 py-10 text-[#202020]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,153,0,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(73,205,223,0.18),_transparent_28%)]" />
         <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
-          <section className="w-full max-w-xl rounded-3xl border border-[#E7E7E7] bg-white p-8 text-gray-900 shadow-2xl shadow-[#49CDDF]/10 backdrop-blur sm:p-10">
-            <div className="mx-auto max-w-md">
+          <section className="w-full max-w-2xl rounded-3xl border border-[#E7E7E7] bg-white px-6 py-8 text-gray-900 shadow-2xl shadow-[#49CDDF]/10 backdrop-blur sm:px-8 sm:py-10">
+            <div className="mx-auto max-w-xl">
               <h2 className="mt-2 text-3xl font-semibold">회원가입</h2>
               <p className="mt-3 text-sm leading-6 text-gray-500">
                 정보를 입력하면 계정이 생성됩니다.
@@ -231,8 +233,12 @@ export default function SignupPage() {
                           포함해야 합니다.
                         </li>
                         <li>
-                          동일 숫자 3자리 연속, 연속 숫자 3자리 이상은 사용할 수
-                          없습니다.
+                          특수문자는 ! @ # $ % ^ &amp; * ( ) - _ = + [ ] {"{"}
+                          {"}"} ; : , . ? / | 만 사용할 수 있습니다.
+                        </li>
+                        <li>
+                          공백, 동일 숫자 3자리 연속, 연속 숫자 3자리 이상은
+                          사용할 수 없습니다.
                         </li>
                       </ul>
                     </div>
