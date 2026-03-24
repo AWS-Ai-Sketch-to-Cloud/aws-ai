@@ -2,6 +2,13 @@
 import { Link } from "react-router";
 import { useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
+import { getApiErrorMessage } from "../../lib/api-error";
+
+type LoginFieldErrors = {
+  loginId?: string;
+  password?: string;
+  auth?: string;
+};
 
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -24,12 +31,27 @@ export default function LoginPage() {
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
-    setErrorMessage("");
+    const nextErrors: LoginFieldErrors = {};
+
+    if (!loginId.trim()) {
+      nextErrors.loginId = "아이디를 입력해 주세요.";
+    }
+    if (!password) {
+      nextErrors.password = "비밀번호를 입력해 주세요.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setIsSubmitting(false);
+      return;
+    }
+
+    setFieldErrors({});
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -38,12 +60,12 @@ export default function LoginPage() {
         body: JSON.stringify({ loginId, password }),
       });
 
-      const data = (await res.json().catch(() => ({}))) as
-        | LoginResponse
-        | { detail?: string };
+      const data = (await res.json().catch(() => ({}))) as LoginResponse | unknown;
 
       if (!res.ok) {
-        throw new Error((data as { detail?: string }).detail ?? "로그인에 실패했습니다.");
+        const message = getApiErrorMessage(data, "로그인에 실패했습니다.");
+        setFieldErrors({ auth: message });
+        return;
       }
 
       const login = data as LoginResponse;
@@ -59,9 +81,14 @@ export default function LoginPage() {
       );
       navigate("/dashboard");
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "로그인 중 오류가 발생했습니다.",
-      );
+      setFieldErrors({
+        auth:
+          error instanceof TypeError
+            ? "서버에 연결할 수 없습니다. 백엔드 실행 상태를 확인해 주세요."
+            : error instanceof Error
+              ? error.message
+              : "로그인 중 오류가 발생했습니다.",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -89,28 +116,48 @@ export default function LoginPage() {
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-gray-700">로그인 ID</span>
                     <input
-                      className="h-12 w-full rounded-xl border border-gray-200 px-4 text-sm outline-none transition focus:border-[#49CDDF]"
+                      className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
+                        fieldErrors.loginId || fieldErrors.auth
+                          ? "border-red-400 focus:border-red-500"
+                          : "border-gray-200 focus:border-[#49CDDF]"
+                      }`}
                       value={loginId}
-                      onChange={(event) => setLoginId(event.target.value)}
+                      onChange={(event) => {
+                        setLoginId(event.target.value.replace(/\s/g, "").toLowerCase());
+                        setFieldErrors((current) => ({ ...current, loginId: undefined, auth: undefined }));
+                      }}
                       placeholder="아이디 입력"
-                      required
+                      autoCapitalize="none"
+                      autoCorrect="off"
                     />
+                    {fieldErrors.loginId ? (
+                      <p className="mt-2 text-sm font-medium text-red-500">{fieldErrors.loginId}</p>
+                    ) : null}
                   </label>
 
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-gray-700">비밀번호</span>
                     <input
                       type="password"
-                      className="h-12 w-full rounded-xl border border-gray-200 px-4 text-sm outline-none transition focus:border-[#49CDDF]"
+                      className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
+                        fieldErrors.password || fieldErrors.auth
+                          ? "border-red-400 focus:border-red-500"
+                          : "border-gray-200 focus:border-[#49CDDF]"
+                      }`}
                       value={password}
-                      onChange={(event) => setPassword(event.target.value)}
+                      onChange={(event) => {
+                        setPassword(event.target.value.replace(/\s/g, ""));
+                        setFieldErrors((current) => ({ ...current, password: undefined, auth: undefined }));
+                      }}
                       placeholder="비밀번호 입력"
-                      required
                     />
+                    {fieldErrors.password ? (
+                      <p className="mt-2 text-sm font-medium text-red-500">{fieldErrors.password}</p>
+                    ) : null}
                   </label>
 
-                  {errorMessage ? (
-                    <p className="text-sm font-medium text-red-500">{errorMessage}</p>
+                  {fieldErrors.auth ? (
+                    <p className="text-sm font-medium text-red-500">{fieldErrors.auth}</p>
                   ) : null}
 
                   <button
