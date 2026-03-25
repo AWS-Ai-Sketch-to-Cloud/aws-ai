@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -16,7 +17,26 @@ SYSTEM_PROMPT = (
 )
 
 
+def load_backend_env() -> None:
+    script_dir = Path(__file__).resolve().parent
+    env_path = script_dir.parent / "backend" / ".env"
+    if not env_path.exists():
+        return
+
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def main() -> int:
+    load_backend_env()
+
     parser = argparse.ArgumentParser(description="Verify direct AWS Bedrock Runtime connectivity.")
     parser.add_argument(
         "--region",
@@ -25,7 +45,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--model-id",
-        default=os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-haiku-20241022-v1:0"),
+        default=os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0"),
         help="Bedrock model id",
     )
     args = parser.parse_args()

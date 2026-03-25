@@ -15,6 +15,7 @@ from app.cost_calculator import estimate_monthly_cost
 from app.database import get_db
 from app.models import AppSession, Project, SessionArchitecture, SessionCostResult, SessionTerraformResult, User
 from app.schemas.session import (
+    AnalysisMeta,
     AnalyzeRequest,
     AnalyzeResponse,
     ArchitectureSaveRequest,
@@ -385,7 +386,9 @@ def analyze_session(session_id: str, payload: AnalyzeRequest, db: Session = Depe
     db.commit()
 
     try:
-        parsed = parse_architecture_with_retry(payload.input_text, ARCH_SCHEMA)
+        parsed, analysis_meta = parse_architecture_with_retry(
+            payload.input_text, ARCH_SCHEMA, payload.input_image_data_url
+        )
 
         architecture = db.scalars(
             select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
@@ -404,7 +407,12 @@ def analyze_session(session_id: str, payload: AnalyzeRequest, db: Session = Depe
         transition_session_status(db, session, "ANALYZED")
         record_session_event(db, session, "ARCHITECTURE_GENERATED", {"schemaVersion": CONTRACT_VERSION})
         db.commit()
-        return AnalyzeResponse(session_id=session_id, status="generated", parsed_json=parsed)
+        return AnalyzeResponse(
+            session_id=session_id,
+            status="generated",
+            parsed_json=parsed,
+            analysisMeta=AnalysisMeta(**analysis_meta),
+        )
     except AIParseError as e:
         transition_session_status(db, session, "FAILED", error_code=e.code, error_message=e.message)
         db.commit()

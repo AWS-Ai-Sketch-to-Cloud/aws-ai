@@ -11,6 +11,14 @@ interface ResultPanelProps {
   activeTab: "architecture" | "terraform" | "cost"
   setActiveTab: (tab: "architecture" | "terraform" | "cost") => void
   generationStatus: "idle" | "analyzing" | "complete" | "optimized"
+  architectureJson?: {
+    ec2?: { count?: number; instance_type?: string }
+    rds?: { enabled?: boolean; engine?: string | null }
+    bedrock?: { enabled?: boolean; model?: string | null }
+    additional_services?: string[]
+    public?: boolean
+    region?: string
+  } | null
   terraformCode?: string | null
   monthlyTotal?: number | null
   costBreakdown?: Record<string, number> | null
@@ -22,6 +30,7 @@ export function ResultPanel({
   activeTab,
   setActiveTab,
   generationStatus,
+  architectureJson,
   terraformCode,
   monthlyTotal,
   costBreakdown,
@@ -51,7 +60,7 @@ export function ResultPanel({
       <CardContent className="p-0">
         <Tabs value={activeTab}>
           <TabsContent value="architecture" className="m-0">
-            <ArchitectureDiagram generationStatus={generationStatus} />
+            <ArchitectureDiagram generationStatus={generationStatus} architectureJson={architectureJson} />
           </TabsContent>
           <TabsContent value="terraform" className="m-0">
             <TerraformCode generationStatus={generationStatus} terraformCode={terraformCode} />

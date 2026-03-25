@@ -22,6 +22,7 @@ export default function SketchConsole() {
     "architecture",
   );
 
+  const [architectureJson, setArchitectureJson] = useState<Record<string, unknown> | null>(null);
   const [terraformCode, setTerraformCode] = useState<string | null>(null);
   const [monthlyTotal, setMonthlyTotal] = useState<number | null>(null);
   const [costBreakdown, setCostBreakdown] = useState<Record<string, number> | null>(null);
@@ -55,6 +56,9 @@ export default function SketchConsole() {
 
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { detail?: string };
+      if (res.status === 401) {
+        throw new Error("인증이 만료되었습니다. 다시 로그인해 주세요. (401 Unauthorized)");
+      }
       throw new Error(data.detail ?? `HTTP ${res.status}`);
     }
 
@@ -76,10 +80,26 @@ export default function SketchConsole() {
     setIsGenerating(true);
     setGenerationStatus("analyzing");
     setErrorMessage(null);
+    setArchitectureJson(null);
+    setTerraformCode(null);
+    setMonthlyTotal(null);
+    setCostBreakdown(null);
+    setRegion(null);
+    setCurrency(null);
 
     try {
+      const toDataUrl = (file: File): Promise<string> =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result ?? ""));
+          reader.onerror = () => reject(new Error("이미지 인코딩 실패"));
+          reader.readAsDataURL(file);
+        });
+
       let imageUrl: string | null = null;
+      let imageDataUrl: string | null = null;
       if (payload.uploadedFile) {
+        imageDataUrl = await toDataUrl(payload.uploadedFile);
         const upRes = await fetch(`${apiBaseUrl}/api/uploads/images`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -131,13 +151,29 @@ export default function SketchConsole() {
         body: JSON.stringify({
           input_text: payload.description?.trim()
             ? payload.description
-            : `Uploaded architecture sketch file: ${payload.uploadedFile?.name ?? "image"}. Assume high availability web architecture on ap-northeast-2 with EC2 2 instances, ALB, and RDS enabled.`,
+            : `Analyze the uploaded architecture diagram and infer AWS resources and counts precisely.`,
           input_type: payload.uploadedFile ? "sketch" : "text",
+          input_image_data_url: imageDataUrl,
         }),
       });
       if (!analyzeRes.ok) {
         const err = (await analyzeRes.json().catch(() => ({}))) as { detail?: string };
         throw new Error(err.detail ?? "분석 실패");
+      }
+      const analyze = (await analyzeRes.json()) as {
+        status: "generated" | "failed";
+        parsed_json?: Record<string, unknown>;
+        error?: { code?: string; message?: string };
+        analysisMeta?: {
+          provider?: string;
+          modelId?: string | null;
+          usedImage?: boolean;
+          fallbackUsed?: boolean;
+        };
+      };
+      if (analyze.status !== "generated") {
+        const code = analyze.error?.code ? `[${analyze.error.code}] ` : "";
+        throw new Error(`${code}${analyze.error?.message ?? "AI 분석 실패"}`);
       }
 
       await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/terraform`, auth.accessToken, {
@@ -149,16 +185,30 @@ export default function SketchConsole() {
 
       const detailRes = await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}`, auth.accessToken);
       const detail = (await detailRes.json()) as {
+        architecture?: { architectureJson?: Record<string, unknown> };
         terraform?: { terraformCode?: string };
         cost?: {
           monthlyTotal?: number;
           costBreakdownJson?: Record<string, number>;
           region?: string;
           currency?: string;
-          assumptionJson?: { ec2_count?: number };
+          assumptionJson?: {
+            ec2_count?: number;
+            pricing_source?: string;
+            pricing_error?: string;
+          };
         };
       };
 
+      console.groupCollapsed("[STC] Analysis Result");
+      console.info("sessionId", session.sessionId);
+      console.info("analysisMeta", analyze.analysisMeta);
+      console.info("parsedJson", analyze.parsed_json);
+      console.info("costAssumptions", detail.cost?.assumptionJson);
+      console.info("costBreakdown", detail.cost?.costBreakdownJson);
+      console.groupEnd();
+
+      setArchitectureJson(detail.architecture?.architectureJson ?? analyze.parsed_json ?? null);
       setTerraformCode(detail.terraform?.terraformCode ?? null);
       setMonthlyTotal(detail.cost?.monthlyTotal ?? null);
       setCostBreakdown(detail.cost?.costBreakdownJson ?? null);
@@ -168,8 +218,15 @@ export default function SketchConsole() {
       setGenerationStatus("complete");
       setTimeout(() => setGenerationStatus("optimized"), 300);
     } catch (error) {
+      console.error("[STC] Generation Failed", error);
       setGenerationStatus("idle");
       setErrorMessage(error instanceof Error ? error.message : "생성 중 오류가 발생했습니다.");
+      setArchitectureJson(null);
+      setTerraformCode(null);
+      setMonthlyTotal(null);
+      setCostBreakdown(null);
+      setRegion(null);
+      setCurrency(null);
     } finally {
       setIsGenerating(false);
     }
@@ -194,6 +251,7 @@ export default function SketchConsole() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               generationStatus={generationStatus}
+              architectureJson={architectureJson}
               terraformCode={terraformCode}
               monthlyTotal={monthlyTotal}
               costBreakdown={costBreakdown}

@@ -1,4 +1,5 @@
-﻿"use client"
+﻿
+"use client"
 
 import { Receipt } from "lucide-react"
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -38,7 +39,10 @@ export function CostAnalysis({ generationStatus, monthlyTotal, costBreakdown, re
 
   const total = monthlyTotal ?? 0
   const breakdown = costBreakdown ?? {}
-  const items = Object.entries(breakdown)
+  const items = Object.entries(breakdown).filter(([name, value]) => {
+    if (name.toLowerCase() === "total") return false
+    return Number(value) > 0
+  })
 
   return (
     <ScrollArea className="h-[600px]">

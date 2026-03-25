@@ -4,7 +4,7 @@
   "title": "SketchToCloudArchitectureV1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["vpc", "ec2", "rds", "public", "region"],
+  "required": ["vpc", "ec2", "rds", "bedrock", "additional_services", "public", "region"],
   "properties": {
     "vpc": {
       "type": "boolean",
@@ -69,6 +69,61 @@
         }
       ]
     },
+    "bedrock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "model"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": ["string", "null"],
+          "enum": ["anthropic.claude-3-haiku-20240307-v1:0", "apac.anthropic.claude-3-haiku-20240307-v1:0", null]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "properties": {
+              "model": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "enabled": { "const": false } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "properties": {
+              "model": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "additional_services": {
+      "type": "array",
+      "description": "Additional AWS services inferred from requirements.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9._-]+$",
+        "minLength": 2,
+        "maxLength": 40
+      },
+      "uniqueItems": true,
+      "maxItems": 20,
+      "default": []
+    },
     "public": {
       "type": "boolean"
     },
@@ -94,6 +149,11 @@
         "enabled": true,
         "engine": "mysql"
       },
+      "bedrock": {
+        "enabled": true,
+        "model": "anthropic.claude-3-haiku-20240307-v1:0"
+      },
+      "additional_services": ["s3", "alb"],
       "public": true,
       "region": "ap-northeast-2"
     }

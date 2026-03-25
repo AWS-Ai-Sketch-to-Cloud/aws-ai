@@ -51,6 +51,7 @@ class SessionListResponse(BaseModel):
 class AnalyzeRequest(BaseModel):
     input_text: str = Field(min_length=1, max_length=2000)
     input_type: Literal["text", "sketch"] = "text"
+    input_image_data_url: str | None = None
 
 
 class ArchitectureSaveRequest(BaseModel):
@@ -203,9 +204,17 @@ class ErrorPayload(BaseModel):
     message: str
 
 
+class AnalysisMeta(BaseModel):
+    provider: Literal["bedrock", "local_fallback"]
+    modelId: str | None = None
+    usedImage: bool
+    fallbackUsed: bool
+
+
 class AnalyzeResponse(BaseModel):
     session_id: str
     status: Literal["generated", "failed"]
     parsed_json: dict[str, Any] | None = None
+    analysisMeta: AnalysisMeta | None = None
     error: ErrorPayload | None = None
     contract_version: Literal["v2"] = CONTRACT_VERSION
