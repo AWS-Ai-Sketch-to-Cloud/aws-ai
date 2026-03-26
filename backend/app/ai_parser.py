@@ -97,6 +97,25 @@ SERVICE_KEYWORDS: dict[str, list[str]] = {
     "redshift": ["redshift", "data warehouse"],
 }
 
+SERVICE_ALIASES: dict[str, str] = {
+    "route 53": "route53",
+    "api gateway": "apigateway",
+    "nat gateway": "nat-gateway",
+    "vpc endpoint": "vpc-endpoint",
+    "step functions": "stepfunctions",
+    "elastic cache": "elasticache",
+}
+
+
+def _normalize_service_name(raw: Any) -> str:
+    value = str(raw).strip().lower()
+    if not value:
+        return ""
+    value = SERVICE_ALIASES.get(value, value)
+    value = value.replace(" ", "-")
+    value = re.sub(r"[^a-z0-9._-]", "", value)
+    return value
+
 
 def _extract_json_text(text: str) -> str:
     trimmed = text.strip()
@@ -221,7 +240,7 @@ def _extract_services_from_text(lowered: str) -> list[str]:
     for service, keys in SERVICE_KEYWORDS.items():
         if any(k in lowered for k in keys):
             services.append(service)
-    return sorted(set(services))
+    return sorted(set(_normalize_service_name(s) for s in services if _normalize_service_name(s)))
 
 
 def _build_requirement_coverage_meta(input_text: str, parsed: dict[str, Any]) -> dict[str, Any]:
@@ -279,6 +298,66 @@ def _build_requirement_coverage_meta(input_text: str, parsed: dict[str, Any]) ->
     met_count = len(checks) - len(unmet)
     coverage = round(met_count / len(checks), 3)
     return {"requirementCoverage": coverage, "unmetHints": unmet}
+
+
+def _build_architecture_rationale(input_text: str, parsed: dict[str, Any]) -> dict[str, Any]:
+    intent_points: list[str] = []
+    design_points: list[str] = []
+    why_better: list[str] = []
+
+    lowered = input_text.lower()
+    ec2 = parsed.get("ec2", {}) or {}
+    rds = parsed.get("rds", {}) or {}
+    bedrock = parsed.get("bedrock", {}) or {}
+    usage = parsed.get("usage", {}) or {}
+
+    if ec2.get("count"):
+        intent_points.append(f"Compute scale appears to target {ec2.get('count')} app node(s)")
+        design_points.append(f"Provisioned EC2 x{ec2.get('count')} ({ec2.get('instance_type', 't3.micro')})")
+        if int(ec2.get("count", 1)) >= 2:
+            why_better.append("Multiple EC2 nodes improve availability versus single-instance deployment")
+
+    if rds.get("enabled"):
+        intent_points.append("Persistent relational data store is required")
+        design_points.append(f"Attached RDS ({rds.get('engine', 'mysql')})")
+        why_better.append("RDS separates state from app nodes, simplifying failover and backups")
+
+    if bedrock.get("enabled"):
+        intent_points.append("AI inference capability is required")
+        design_points.append(f"Enabled Bedrock model {bedrock.get('model')}")
+        why_better.append("Managed Bedrock integration reduces custom model-serving operational overhead")
+
+    if parsed.get("public"):
+        intent_points.append("Public internet access is expected")
+        design_points.append("Public entry path is preserved")
+    else:
+        intent_points.append("Private/internal access posture is preferred")
+        design_points.append("VPC private topology is preserved")
+        why_better.append("Private-first layout lowers attack surface compared with fully public exposure")
+
+    if any(k in lowered for k in ["cost", "budget", "저비용", "비용"]):
+        why_better.append("Instance family and service choices are kept close to cost-efficient defaults")
+    if any(k in lowered for k in ["high availability", "ha", "가용성"]):
+        why_better.append("Resource split and node count align with higher availability goals")
+
+    if usage:
+        design_points.append(
+            "Usage assumptions: "
+            f"{usage.get('monthly_hours', 730)}h/mo, "
+            f"{usage.get('data_transfer_gb', 100)}GB transfer, "
+            f"{usage.get('storage_gb', 50)}GB storage, "
+            f"{usage.get('requests_million', 5)}M requests"
+        )
+
+    if not why_better:
+        why_better.append("Selected components balance simplicity, maintainability, and expected workload fit")
+
+    return {
+        "intentPoints": intent_points,
+        "designPoints": design_points,
+        "whyBetter": why_better,
+        "summary": "AI generated this topology from your text/image signals and optimized for operability plus cost-awareness.",
+    }
 
 
 def _local_fallback_parse(input_text: str) -> dict[str, Any]:
@@ -439,7 +518,8 @@ def _normalize_architecture(parsed: dict[str, Any]) -> dict[str, Any]:
     services = normalized.get("additional_services")
     if not isinstance(services, list):
         services = []
-    service_list = [str(s).strip().lower() for s in services if str(s).strip()]
+    service_list = [_normalize_service_name(s) for s in services if str(s).strip()]
+    service_list = [s for s in service_list if s]
     if normalized["bedrock"]["enabled"]:
         service_list.append("bedrock")
     if normalized["rds"].get("enabled"):
@@ -492,7 +572,8 @@ def _apply_requirement_hints(input_text: str, parsed: dict[str, Any]) -> dict[st
     elif any(k in lowered for k in ["public", "internet", "external", "퍼블릭"]):
         normalized["public"] = True
 
-    services = [str(s).lower() for s in normalized.get("additional_services", []) if str(s).strip()]
+    services = [_normalize_service_name(s) for s in normalized.get("additional_services", []) if str(s).strip()]
+    services = [s for s in services if s]
     services.extend(_extract_services_from_text(lowered))
 
     for service, keys in SERVICE_KEYWORDS.items():
@@ -539,6 +620,7 @@ def parse_architecture_with_retry(
                     "usedImage": used_image,
                     "fallbackUsed": False,
                     **coverage_meta,
+                    "rationale": _build_architecture_rationale(input_text, parsed),
                 }
             else:
                 parsed = _apply_requirement_hints(input_text, _normalize_architecture(_local_fallback_parse(input_text)))
@@ -549,6 +631,7 @@ def parse_architecture_with_retry(
                     "usedImage": used_image,
                     "fallbackUsed": True,
                     **coverage_meta,
+                    "rationale": _build_architecture_rationale(input_text, parsed),
                 }
 
             validate(instance=parsed, schema=schema)
@@ -570,6 +653,7 @@ def parse_architecture_with_retry(
                     "usedImage": used_image,
                     "fallbackUsed": True,
                     **coverage_meta,
+                    "rationale": _build_architecture_rationale(input_text, parsed),
                 }
             last_error = AIParseError("INTERNAL_ERROR", str(e))
         except Exception as e:  # noqa: BLE001

@@ -30,6 +30,12 @@ interface ResultPanelProps {
     monthly_total_usd?: number
     monthly_total_krw?: number
   } | null
+  architectureRationale?: {
+    summary?: string
+    intentPoints?: string[]
+    designPoints?: string[]
+    whyBetter?: string[]
+  } | null
 }
 
 export function ResultPanel({
@@ -37,6 +43,7 @@ export function ResultPanel({
   setActiveTab,
   generationStatus,
   architectureJson,
+  architectureRationale,
   terraformCode,
   monthlyTotal,
   costBreakdown,
@@ -67,7 +74,11 @@ export function ResultPanel({
       <CardContent className="p-0">
         <Tabs value={activeTab}>
           <TabsContent value="architecture" className="m-0">
-            <ArchitectureDiagram generationStatus={generationStatus} architectureJson={architectureJson} />
+            <ArchitectureDiagram
+              generationStatus={generationStatus}
+              architectureJson={architectureJson}
+              rationale={architectureRationale}
+            />
           </TabsContent>
           <TabsContent value="terraform" className="m-0">
             <TerraformCode generationStatus={generationStatus} terraformCode={terraformCode} />

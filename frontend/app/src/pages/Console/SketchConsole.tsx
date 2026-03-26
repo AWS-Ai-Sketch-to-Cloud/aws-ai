@@ -36,6 +36,12 @@ export default function SketchConsole() {
   } | null>(null);
   const [analysisCoverage, setAnalysisCoverage] = useState<number | null>(null);
   const [analysisUnmetHints, setAnalysisUnmetHints] = useState<string[]>([]);
+  const [analysisRationale, setAnalysisRationale] = useState<{
+    summary?: string;
+    intentPoints?: string[];
+    designPoints?: string[];
+    whyBetter?: string[];
+  } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const getAuth = (): AuthSession | null => {
@@ -97,6 +103,7 @@ export default function SketchConsole() {
     setCostAssumptions(null);
     setAnalysisCoverage(null);
     setAnalysisUnmetHints([]);
+    setAnalysisRationale(null);
 
     try {
       const toDataUrl = (file: File): Promise<string> =>
@@ -177,6 +184,12 @@ export default function SketchConsole() {
           fallbackUsed?: boolean;
           requirementCoverage?: number;
           unmetHints?: string[];
+          rationale?: {
+            summary?: string;
+            intentPoints?: string[];
+            designPoints?: string[];
+            whyBetter?: string[];
+          };
         };
       };
       if (analyze.status !== "generated") {
@@ -231,6 +244,7 @@ export default function SketchConsole() {
           : null,
       );
       setAnalysisUnmetHints(analyze.analysisMeta?.unmetHints ?? []);
+      setAnalysisRationale(analyze.analysisMeta?.rationale ?? null);
 
       setGenerationStatus("complete");
       setTimeout(() => setGenerationStatus("optimized"), 300);
@@ -247,6 +261,7 @@ export default function SketchConsole() {
       setCostAssumptions(null);
       setAnalysisCoverage(null);
       setAnalysisUnmetHints([]);
+      setAnalysisRationale(null);
     } finally {
       setIsGenerating(false);
     }
@@ -278,6 +293,7 @@ export default function SketchConsole() {
               setActiveTab={setActiveTab}
               generationStatus={generationStatus}
               architectureJson={architectureJson}
+              architectureRationale={analysisRationale}
               terraformCode={terraformCode}
               monthlyTotal={monthlyTotal}
               costBreakdown={costBreakdown}

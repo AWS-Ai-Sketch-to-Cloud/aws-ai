@@ -16,6 +16,12 @@ interface ArchitectureDiagramProps {
     public?: boolean
     region?: string
   } | null
+  rationale?: {
+    summary?: string
+    intentPoints?: string[]
+    designPoints?: string[]
+    whyBetter?: string[]
+  } | null
 }
 
 function CustomNode({ data }: { data: { label: string; icon: "globe" | "cloud" | "server" | "database" | "bot" } }) {
@@ -128,7 +134,7 @@ function buildGraph(architectureJson: ArchitectureDiagramProps["architectureJson
   return { nodes, edges }
 }
 
-export function ArchitectureDiagram({ generationStatus, architectureJson }: ArchitectureDiagramProps) {
+export function ArchitectureDiagram({ generationStatus, architectureJson, rationale }: ArchitectureDiagramProps) {
   const graph = useMemo(() => buildGraph(architectureJson), [architectureJson])
 
   if (generationStatus === "idle") {
@@ -157,22 +163,39 @@ export function ArchitectureDiagram({ generationStatus, architectureJson }: Arch
   }
 
   return (
-    <div className="h-[600px] w-full">
-      <ReactFlow
-        nodes={graph.nodes}
-        edges={graph.edges}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.25 }}
-        proOptions={{ hideAttribution: true }}
-        className="bg-background"
-      >
-        <Background color="var(--border)" gap={20} size={1} />
-        <Controls
-          className="!rounded-lg !border-border/50 !bg-card !shadow-none [&>button]:!border-border/50 [&>button]:!bg-card [&>button]:!text-muted-foreground"
-          showInteractive={false}
-        />
-      </ReactFlow>
+    <div className="h-[600px] w-full flex flex-col">
+      <div className="min-h-0 flex-1">
+        <ReactFlow
+          nodes={graph.nodes}
+          edges={graph.edges}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.25 }}
+          proOptions={{ hideAttribution: true }}
+          className="bg-background"
+        >
+          <Background color="var(--border)" gap={20} size={1} />
+          <Controls
+            className="!rounded-lg !border-border/50 !bg-card !shadow-none [&>button]:!border-border/50 [&>button]:!bg-card [&>button]:!text-muted-foreground"
+            showInteractive={false}
+          />
+        </ReactFlow>
+      </div>
+      {rationale ? (
+        <div className="border-t border-border/40 bg-secondary/10 px-4 py-3 text-xs overflow-auto max-h-44">
+          <p className="font-semibold text-foreground">AI 설계 이유</p>
+          {rationale.summary ? <p className="mt-1 text-muted-foreground">{rationale.summary}</p> : null}
+          {rationale.intentPoints?.length ? (
+            <p className="mt-2 text-foreground">요구 인식: {rationale.intentPoints.join(" / ")}</p>
+          ) : null}
+          {rationale.designPoints?.length ? (
+            <p className="mt-1 text-foreground">적용 설계: {rationale.designPoints.join(" / ")}</p>
+          ) : null}
+          {rationale.whyBetter?.length ? (
+            <p className="mt-1 text-primary">개선 이유: {rationale.whyBetter.join(" / ")}</p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

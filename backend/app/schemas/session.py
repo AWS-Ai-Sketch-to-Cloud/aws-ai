@@ -211,6 +211,7 @@ class AnalysisMeta(BaseModel):
     fallbackUsed: bool
     requirementCoverage: float | None = None
     unmetHints: list[str] | None = None
+    rationale: dict[str, Any] | None = None
 
 
 class AnalyzeResponse(BaseModel):
