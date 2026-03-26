@@ -5,9 +5,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $suffix = Get-Date -Format "yyyyMMddHHmmss"
-$loginId = "smoke_$suffix"
+$loginId = "smoke$suffix"
 $email = "smoke_$suffix@example.com"
-$password = "SmokePass123!"
+$password = "SmokePass!90"
 $displayName = "Smoke User"
 
 Write-Host "0) Register"
@@ -80,6 +80,17 @@ $archBody = @{
             enabled = $true
             engine = "mysql"
         }
+        bedrock = @{
+            enabled = $false
+            model = $null
+        }
+        additional_services = @("alb", "cloudwatch")
+        usage = @{
+            monthly_hours = 730
+            data_transfer_gb = 120
+            storage_gb = 80
+            requests_million = 10
+        }
         public = $false
         region = "ap-northeast-2"
     }
@@ -116,6 +127,17 @@ $archBody2 = @"
     "rds": {
       "enabled": true,
       "engine": "mysql"
+    },
+    "bedrock": {
+      "enabled": false,
+      "model": null
+    },
+    "additional_services": ["alb"],
+    "usage": {
+      "monthly_hours": 730,
+      "data_transfer_gb": 200,
+      "storage_gb": 100,
+      "requests_million": 20
     },
     "public": false,
     "region": "ap-northeast-2"

@@ -4,7 +4,7 @@
   "title": "SketchToCloudArchitectureV1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["vpc", "ec2", "rds", "bedrock", "additional_services", "public", "region"],
+  "required": ["vpc", "ec2", "rds", "bedrock", "additional_services", "usage", "public", "region"],
   "properties": {
     "vpc": {
       "type": "boolean",
@@ -22,7 +22,19 @@
         },
         "instance_type": {
           "type": "string",
-          "enum": ["t3.micro", "t3.small", "t3.medium"]
+          "enum": [
+            "t3.nano",
+            "t3.micro",
+            "t3.small",
+            "t3.medium",
+            "t3.large",
+            "m6i.large",
+            "m6i.xlarge",
+            "c6i.large",
+            "c6i.xlarge",
+            "r6i.large",
+            "r6i.xlarge"
+          ]
         }
       }
     },
@@ -124,6 +136,37 @@
       "maxItems": 20,
       "default": []
     },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["monthly_hours", "data_transfer_gb", "storage_gb", "requests_million"],
+      "properties": {
+        "monthly_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 744,
+          "default": 730
+        },
+        "data_transfer_gb": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "default": 100
+        },
+        "storage_gb": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "default": 50
+        },
+        "requests_million": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "default": 5
+        }
+      }
+    },
     "public": {
       "type": "boolean"
     },
@@ -154,6 +197,12 @@
         "model": "anthropic.claude-3-haiku-20240307-v1:0"
       },
       "additional_services": ["s3", "alb"],
+      "usage": {
+        "monthly_hours": 730,
+        "data_transfer_gb": 200,
+        "storage_gb": 100,
+        "requests_million": 10
+      },
       "public": true,
       "region": "ap-northeast-2"
     }

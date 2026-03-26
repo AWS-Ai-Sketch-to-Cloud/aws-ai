@@ -28,6 +28,14 @@ export default function SketchConsole() {
   const [costBreakdown, setCostBreakdown] = useState<Record<string, number> | null>(null);
   const [region, setRegion] = useState<string | null>(null);
   const [currency, setCurrency] = useState<string | null>(null);
+  const [costAssumptions, setCostAssumptions] = useState<{
+    pricing_source?: string;
+    pricing_error?: string;
+    monthly_total_usd?: number;
+    monthly_total_krw?: number;
+  } | null>(null);
+  const [analysisCoverage, setAnalysisCoverage] = useState<number | null>(null);
+  const [analysisUnmetHints, setAnalysisUnmetHints] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const getAuth = (): AuthSession | null => {
@@ -86,6 +94,9 @@ export default function SketchConsole() {
     setCostBreakdown(null);
     setRegion(null);
     setCurrency(null);
+    setCostAssumptions(null);
+    setAnalysisCoverage(null);
+    setAnalysisUnmetHints([]);
 
     try {
       const toDataUrl = (file: File): Promise<string> =>
@@ -145,9 +156,8 @@ export default function SketchConsole() {
       );
       const session = (await sessionRes.json()) as { sessionId: string };
 
-      const analyzeRes = await fetch(`${apiBaseUrl}/sessions/${session.sessionId}/analyze`, {
+      const analyzeRes = await authFetch(`${apiBaseUrl}/sessions/${session.sessionId}/analyze`, auth.accessToken, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           input_text: payload.description?.trim()
             ? payload.description
@@ -156,10 +166,6 @@ export default function SketchConsole() {
           input_image_data_url: imageDataUrl,
         }),
       });
-      if (!analyzeRes.ok) {
-        const err = (await analyzeRes.json().catch(() => ({}))) as { detail?: string };
-        throw new Error(err.detail ?? "분석 실패");
-      }
       const analyze = (await analyzeRes.json()) as {
         status: "generated" | "failed";
         parsed_json?: Record<string, unknown>;
@@ -169,6 +175,8 @@ export default function SketchConsole() {
           modelId?: string | null;
           usedImage?: boolean;
           fallbackUsed?: boolean;
+          requirementCoverage?: number;
+          unmetHints?: string[];
         };
       };
       if (analyze.status !== "generated") {
@@ -196,6 +204,8 @@ export default function SketchConsole() {
             ec2_count?: number;
             pricing_source?: string;
             pricing_error?: string;
+            monthly_total_usd?: number;
+            monthly_total_krw?: number;
           };
         };
       };
@@ -214,6 +224,13 @@ export default function SketchConsole() {
       setCostBreakdown(detail.cost?.costBreakdownJson ?? null);
       setRegion(detail.cost?.region ?? null);
       setCurrency(detail.cost?.currency ?? null);
+      setCostAssumptions(detail.cost?.assumptionJson ?? null);
+      setAnalysisCoverage(
+        typeof analyze.analysisMeta?.requirementCoverage === "number"
+          ? analyze.analysisMeta.requirementCoverage
+          : null,
+      );
+      setAnalysisUnmetHints(analyze.analysisMeta?.unmetHints ?? []);
 
       setGenerationStatus("complete");
       setTimeout(() => setGenerationStatus("optimized"), 300);
@@ -227,6 +244,9 @@ export default function SketchConsole() {
       setCostBreakdown(null);
       setRegion(null);
       setCurrency(null);
+      setCostAssumptions(null);
+      setAnalysisCoverage(null);
+      setAnalysisUnmetHints([]);
     } finally {
       setIsGenerating(false);
     }
@@ -244,6 +264,12 @@ export default function SketchConsole() {
               {errorMessage}
             </div>
           ) : null}
+          {analysisCoverage !== null && analysisCoverage < 0.75 ? (
+            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              요구사항 반영률이 낮습니다 ({Math.round(analysisCoverage * 100)}%). 미반영 힌트:{" "}
+              {analysisUnmetHints.length ? analysisUnmetHints.join(", ") : "없음"}
+            </div>
+          ) : null}
 
           <div className="grid gap-6 lg:grid-cols-[420px_1fr] xl:grid-cols-[480px_1fr]">
             <ControlPanel onGenerate={handleGenerate} isGenerating={isGenerating} />
@@ -257,6 +283,7 @@ export default function SketchConsole() {
               costBreakdown={costBreakdown}
               region={region}
               currency={currency}
+              assumptions={costAssumptions}
             />
           </div>
         </main>

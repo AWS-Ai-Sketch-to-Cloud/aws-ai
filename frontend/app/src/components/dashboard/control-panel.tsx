@@ -31,7 +31,7 @@ export function ControlPanel({ onGenerate, isGenerating }: ControlPanelProps) {
     e.preventDefault()
     setIsDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file && (file.type.startsWith("image/") || file.type === "application/pdf")) {
+    if (file && file.type.startsWith("image/")) {
       setUploadedFile(file)
     }
   }, [])
@@ -105,9 +105,9 @@ export function ControlPanel({ onGenerate, isGenerating }: ControlPanelProps) {
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/50">
                 <Upload className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
               </div>
-              <p className="mt-3 text-sm font-medium text-foreground">이미지/PDF 업로드</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">PNG, JPG, PDF</p>
-              <input type="file" accept="image/*,.pdf" onChange={handleFileSelect} className="absolute inset-0 cursor-pointer opacity-0" />
+              <p className="mt-3 text-sm font-medium text-foreground">이미지 업로드</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">PNG, JPG, WEBP</p>
+              <input type="file" accept="image/*" onChange={handleFileSelect} className="absolute inset-0 cursor-pointer opacity-0" />
             </div>
           )}
         </CardContent>

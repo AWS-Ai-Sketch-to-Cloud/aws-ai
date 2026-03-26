@@ -378,8 +378,14 @@ def create_session(payload: SessionCreateRequest, db: Session = Depends(get_db))
 
 
 @router.post("/sessions/{session_id}/analyze", response_model=AnalyzeResponse)
-def analyze_session(session_id: str, payload: AnalyzeRequest, db: Session = Depends(get_db)) -> AnalyzeResponse:
+def analyze_session(
+    session_id: str,
+    payload: AnalyzeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AnalyzeResponse:
     session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
     transition_session_status(db, session, "ANALYZING")
     session.input_text = payload.input_text
     session.input_type = "SKETCH" if payload.input_type == "sketch" else "TEXT"
@@ -426,8 +432,13 @@ def analyze_session(session_id: str, payload: AnalyzeRequest, db: Session = Depe
 
 
 @router.get("/sessions/{session_id}")
-def get_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
     session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
     architecture = db.scalars(
         select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
     ).first()

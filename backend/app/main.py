@@ -6,6 +6,10 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.env import load_env_file
+
+load_env_file()
+
 from app.core.constants import CONTRACT_VERSION
 from app.core.exceptions import request_validation_exception_handler
 from app.routers.auth import router as auth_router

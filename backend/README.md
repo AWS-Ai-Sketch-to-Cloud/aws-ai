@@ -15,3 +15,14 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+스모크 테스트:
+```powershell
+cd backend
+python scripts/smoke_api_testclient.py
+```
+
+회귀 테스트:
+```powershell
+pytest -q tests/test_sessions_pipeline.py
+```
+

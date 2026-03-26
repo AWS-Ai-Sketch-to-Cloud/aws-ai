@@ -24,6 +24,12 @@ interface ResultPanelProps {
   costBreakdown?: Record<string, number> | null
   region?: string | null
   currency?: string | null
+  assumptions?: {
+    pricing_source?: string
+    pricing_error?: string
+    monthly_total_usd?: number
+    monthly_total_krw?: number
+  } | null
 }
 
 export function ResultPanel({
@@ -36,6 +42,7 @@ export function ResultPanel({
   costBreakdown,
   region,
   currency,
+  assumptions,
 }: ResultPanelProps) {
   return (
     <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
@@ -72,6 +79,7 @@ export function ResultPanel({
               costBreakdown={costBreakdown}
               region={region}
               currency={currency}
+              assumptions={assumptions}
             />
           </TabsContent>
         </Tabs>

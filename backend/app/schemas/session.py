@@ -209,6 +209,8 @@ class AnalysisMeta(BaseModel):
     modelId: str | None = None
     usedImage: bool
     fallbackUsed: bool
+    requirementCoverage: float | None = None
+    unmetHints: list[str] | None = None
 
 
 class AnalyzeResponse(BaseModel):
