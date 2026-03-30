@@ -72,11 +72,11 @@ export function validatePassword(password: string): string | null {
   }
 
   if (repeatedDigitPattern.test(password)) {
-    return "비밀번호에는 동일한 숫자를 3자리 이상 연속으로 사용할 수 없습니다.";
+    return "비밀번호에는 동일한 숫자 3자리를 연속으로 사용할 수 없습니다.";
   }
 
   if (hasSequentialDigits(password)) {
-    return "비밀번호에는 연속된 숫자를 3자리 이상 사용할 수 없습니다.";
+    return "비밀번호에는 연속된 숫자 3자리 이상을 사용할 수 없습니다.";
   }
 
   return null;

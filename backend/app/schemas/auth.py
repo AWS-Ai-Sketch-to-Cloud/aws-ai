@@ -55,6 +55,13 @@ class LoginResponse(BaseModel):
     contractVersion: Literal["v2"] = CONTRACT_VERSION
 
 
+class SocialSignupCompleteRequest(BaseModel):
+    provider: str = Field(min_length=2, max_length=30)
+    providerUserId: str = Field(min_length=1, max_length=255)
+    email: str = Field(min_length=3, max_length=255)
+    displayName: str = Field(min_length=1, max_length=100)
+
+
 class LogoutRequest(BaseModel):
     refreshToken: str = Field(min_length=10, max_length=500)
 

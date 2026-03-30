@@ -27,16 +27,16 @@ def has_sequential_digits(raw: str, min_run: int = 3) -> bool:
 
 def validate_login_id(value: str) -> str:
     if not LOGIN_ID_PATTERN.fullmatch(value):
-        raise ValueError("?꾩씠?붾뒗 ?곷Ц ?뚮Ц?먯? ?レ옄留??ъ슜?????덉뒿?덈떎.")
+        raise ValueError("아이디는 영문 소문자와 숫자만 사용할 수 있습니다.")
     return value
 
 
 def validate_password_rules(value: str) -> str:
     if any(ch.isspace() for ch in value):
-        raise ValueError("鍮꾨?踰덊샇?먮뒗 怨듬갚???ъ슜?????놁뒿?덈떎.")
+        raise ValueError("비밀번호에는 공백을 사용할 수 없습니다.")
     if not ALLOWED_PASSWORD_PATTERN.fullmatch(value):
         raise ValueError(
-            "鍮꾨?踰덊샇 ?뱀닔臾몄옄??! @ # $ % ^ & * ( ) - _ = + [ ] { } ; : , . ? / | 留??ъ슜?????덉뒿?덈떎."
+            "비밀번호 특수문자는 ! @ # $ % ^ & * ( ) - _ = + [ ] { } ; : , . ? / | 만 사용할 수 있습니다."
         )
 
     category_count = sum(
@@ -48,9 +48,9 @@ def validate_password_rules(value: str) -> str:
         ]
     )
     if category_count < 2:
-        raise ValueError("鍮꾨?踰덊샇???臾몄옄, ?뚮Ц?? ?レ옄, ?뱀닔臾몄옄 以?2醫낅쪟 ?댁긽???ы븿?댁빞 ?⑸땲??")
+        raise ValueError("비밀번호는 대문자, 소문자, 숫자, 특수문자 중 2종류 이상을 포함해야 합니다.")
     if REPEATED_DIGIT_PATTERN.search(value):
-        raise ValueError("鍮꾨?踰덊샇?먮뒗 ?숈씪???レ옄瑜?3?먮━ ?댁긽 ?곗냽?쇰줈 ?ъ슜?????놁뒿?덈떎.")
+        raise ValueError("비밀번호에는 동일한 숫자 3자리를 연속으로 사용할 수 없습니다.")
     if has_sequential_digits(value):
-        raise ValueError("鍮꾨?踰덊샇?먮뒗 ?곗냽???レ옄瑜?3?먮━ ?댁긽 ?ъ슜?????놁뒿?덈떎.")
+        raise ValueError("비밀번호에는 연속된 숫자 3자리 이상을 사용할 수 없습니다.")
     return value

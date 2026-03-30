@@ -12,8 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.core.env import load_env_file
 from app.models import Base
 
+load_env_file()
 
 config = context.config
 

@@ -3,6 +3,7 @@
 import { Cloud, Settings, Bell, User } from "lucide-react"
 import { useNavigate } from "react-router"
 import { Button } from "@/components/ui/button"
+import { toast } from "@/hooks/use-toast"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +30,11 @@ export function Header({ generationStatus }: HeaderProps) {
 
   const handleLogout = () => {
     sessionStorage.removeItem("stc-auth")
+    toast({
+      title: "로그아웃 완료",
+      description: "안전하게 로그아웃되었습니다.",
+      variant: "success",
+    })
     navigate("/")
   }
 
