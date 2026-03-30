@@ -30,11 +30,11 @@ router = APIRouter()
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     existing_email = db.scalars(select(User).where(User.email == payload.email).limit(1)).first()
     if existing_email:
-        raise HTTPException(status_code=409, detail="?대? ?ъ슜 以묒씤 ?대찓?쇱엯?덈떎.")
+        raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다.")
 
     existing_login = db.scalars(select(User).where(User.login_id == payload.loginId).limit(1)).first()
     if existing_login:
-        raise HTTPException(status_code=409, detail="?대? ?ъ슜 以묒씤 ?꾩씠?붿엯?덈떎.")
+        raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
 
     user = User(
         login_id=payload.loginId,
@@ -65,10 +65,10 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     user = db.scalars(select(User).where(User.login_id == payload.loginId).limit(1)).first()
     if not user:
-        raise HTTPException(status_code=401, detail="?꾩씠???먮뒗 鍮꾨?踰덊샇媛 ?쇱튂?섏? ?딆뒿?덈떎.")
+        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 일치하지 않습니다.")
 
     if not user.password_hash or user.password_hash != hash_text(payload.password):
-        raise HTTPException(status_code=401, detail="?꾩씠???먮뒗 鍮꾨?踰덊샇媛 ?쇱튂?섏? ?딆뒿?덈떎.")
+        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 일치하지 않습니다.")
 
     refresh_token = secrets.token_urlsafe(48)
     auth_session = AuthSession(

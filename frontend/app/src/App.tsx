@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Route, Routes } from "react-router";
 import { ScrollToTop } from "./components/common/ScrollToTop";
+import { Toaster } from "./components/ui/toaster";
 import LoginPage from "./pages/Auth/LoginPage";
 import SignupPage from "./pages/Auth/SignupPage";
 import SketchConsole from "./pages/Console/SketchConsole";
@@ -9,6 +10,7 @@ export default function App() {
   return (
     <Router>
       <ScrollToTop />
+      <Toaster />
       <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />

@@ -14,7 +14,7 @@ def extract_validation_message(exc: RequestValidationError) -> str:
         if message and message not in messages:
             messages.append(message)
     if not messages:
-        return "?낅젰媛믪쓣 ?ㅼ떆 ?뺤씤??二쇱꽭??"
+        return "입력값을 다시 확인해 주세요."
     return "\n".join(messages)
 
 

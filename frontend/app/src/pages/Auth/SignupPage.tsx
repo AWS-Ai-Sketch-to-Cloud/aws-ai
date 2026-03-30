@@ -1,6 +1,7 @@
 ﻿import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
+import { toast } from "../../hooks/use-toast";
 import { getApiErrorMessage } from "../../lib/api-error";
 import { validateLoginId, validatePassword } from "../../lib/auth-validation";
 
@@ -24,6 +25,22 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<SignupFieldErrors>({});
+
+  const applyRegisterApiError = (status: number, message: string) => {
+    if (status === 409) {
+      if (message.includes("아이디") || message.toLowerCase().includes("login")) {
+        setFieldErrors({ loginId: message });
+        return;
+      }
+
+      if (message.includes("이메일") || message.toLowerCase().includes("email")) {
+        setFieldErrors({ email: message });
+        return;
+      }
+    }
+
+    setFieldErrors({ submit: message });
+  };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -67,12 +84,18 @@ export default function SignupPage() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setFieldErrors({
-          submit: getApiErrorMessage(body, "회원가입에 실패했습니다."),
-        });
+        applyRegisterApiError(
+          res.status,
+          getApiErrorMessage(body, "회원가입에 실패했습니다."),
+        );
         return;
       }
 
+      toast({
+        title: "회원가입 완료",
+        description: "이제 로그인할 수 있습니다.",
+        variant: "success",
+      });
       navigate("/");
     } catch (error) {
       setFieldErrors({

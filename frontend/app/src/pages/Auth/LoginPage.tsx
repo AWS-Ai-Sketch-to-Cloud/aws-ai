@@ -2,6 +2,7 @@
 import { Link } from "react-router";
 import { useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
+import { toast } from "../../hooks/use-toast";
 import { getApiErrorMessage } from "../../lib/api-error";
 
 type LoginFieldErrors = {
@@ -32,6 +33,27 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
+
+  const applyLoginApiError = (status: number, message: string) => {
+    if (status === 401) {
+      setFieldErrors({ password: message });
+      return;
+    }
+
+    if (status === 422) {
+      if (message.includes("아이디")) {
+        setFieldErrors({ loginId: message });
+        return;
+      }
+
+      if (message.includes("비밀번호")) {
+        setFieldErrors({ password: message });
+        return;
+      }
+    }
+
+    setFieldErrors({ auth: message });
+  };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -64,7 +86,7 @@ export default function LoginPage() {
 
       if (!res.ok) {
         const message = getApiErrorMessage(data, "로그인에 실패했습니다.");
-        setFieldErrors({ auth: message });
+        applyLoginApiError(res.status, message);
         return;
       }
 
@@ -79,6 +101,11 @@ export default function LoginPage() {
           apiBaseUrl: API_BASE_URL,
         }),
       );
+      toast({
+        title: "로그인 완료",
+        description: "대시보드로 이동합니다.",
+        variant: "success",
+      });
       navigate("/dashboard");
     } catch (error) {
       setFieldErrors({
@@ -117,7 +144,7 @@ export default function LoginPage() {
                     <span className="mb-2 block text-sm font-medium text-gray-700">로그인 ID</span>
                     <input
                       className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
-                        fieldErrors.loginId || fieldErrors.auth
+                        fieldErrors.loginId
                           ? "border-red-400 focus:border-red-500"
                           : "border-gray-200 focus:border-[#49CDDF]"
                       }`}
@@ -153,12 +180,10 @@ export default function LoginPage() {
                     />
                     {fieldErrors.password ? (
                       <p className="mt-2 text-sm font-medium text-red-500">{fieldErrors.password}</p>
+                    ) : fieldErrors.auth ? (
+                      <p className="mt-2 text-sm font-medium text-red-500">{fieldErrors.auth}</p>
                     ) : null}
                   </label>
-
-                  {fieldErrors.auth ? (
-                    <p className="text-sm font-medium text-red-500">{fieldErrors.auth}</p>
-                  ) : null}
 
                   <button
                     type="submit"
