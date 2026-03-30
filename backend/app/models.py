@@ -61,6 +61,20 @@ class AuthSession(Base):
     user: Mapped[User] = relationship(back_populates="auth_sessions")
 
 
+class GitHubOAuthToken(Base):
+    __tablename__ = "github_oauth_tokens"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
+    encrypted_access_token: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship()
+
+
 class Project(Base):
     __tablename__ = "projects"
 

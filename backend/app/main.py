@@ -13,6 +13,7 @@ load_env_file()
 from app.core.constants import CONTRACT_VERSION
 from app.core.exceptions import request_validation_exception_handler
 from app.routers.auth import router as auth_router
+from app.routers.github import router as github_router
 from app.routers.projects import router as projects_router
 from app.routers.sessions import router as sessions_router
 from app.routers.uploads import router as uploads_router
@@ -34,6 +35,7 @@ def healthcheck() -> dict[str, str]:
 
 
 app.include_router(auth_router)
+app.include_router(github_router)
 app.include_router(projects_router)
 app.include_router(sessions_router)
 app.include_router(uploads_router)

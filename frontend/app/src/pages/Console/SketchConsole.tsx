@@ -10,6 +10,45 @@ type AuthSession = {
   apiBaseUrl?: string;
 };
 
+type GitHubRepoItem = {
+  fullName: string;
+  name: string;
+  owner: string;
+  private: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+  updatedAt: string;
+};
+
+type GitHubRepoListResponse = {
+  repos: GitHubRepoItem[];
+};
+
+type GitHubRepoAnalyzeResponse = {
+  fullName: string;
+  defaultBranch: string;
+  scannedFileCount: number;
+  summary: string;
+  findings: string[];
+  recommendedStack: string[];
+  requiredServices: string[];
+  languageHints: string[];
+  dependencyFiles: string[];
+  deploymentSteps: string[];
+  risks: string[];
+  costNotes: string[];
+  detected: Record<string, boolean>;
+  architectureJson: Record<string, unknown>;
+  terraformCode: string;
+  cost: {
+    currency?: string;
+    monthly_total?: number;
+    monthlyTotal?: number;
+    breakdown?: Record<string, number>;
+    assumptions?: Record<string, unknown>;
+  };
+};
+
 const DEFAULT_API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://127.0.0.1:8000";
 
@@ -43,6 +82,11 @@ export default function SketchConsole() {
     whyBetter?: string[];
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [githubRepos, setGithubRepos] = useState<GitHubRepoItem[]>([]);
+  const [selectedRepo, setSelectedRepo] = useState<string>("");
+  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+  const [isAnalyzingRepo, setIsAnalyzingRepo] = useState(false);
+  const [repoAnalysis, setRepoAnalysis] = useState<GitHubRepoAnalyzeResponse | null>(null);
 
   const getAuth = (): AuthSession | null => {
     try {
@@ -267,6 +311,62 @@ export default function SketchConsole() {
     }
   };
 
+  const loadGitHubRepos = async () => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("로그인이 필요합니다.");
+      return;
+    }
+
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setIsLoadingRepos(true);
+    setErrorMessage(null);
+    try {
+      const res = await authFetch(`${apiBaseUrl}/api/github/repos`, auth.accessToken);
+      const data = (await res.json()) as GitHubRepoListResponse;
+      setGithubRepos(data.repos ?? []);
+      if ((data.repos?.length ?? 0) > 0) {
+        setSelectedRepo((current) => current || data.repos[0].fullName);
+      }
+    } catch (error) {
+      setGithubRepos([]);
+      setSelectedRepo("");
+      setRepoAnalysis(null);
+      setErrorMessage(error instanceof Error ? error.message : "GitHub 레포 조회 중 오류가 발생했습니다.");
+    } finally {
+      setIsLoadingRepos(false);
+    }
+  };
+
+  const analyzeSelectedGitHubRepo = async () => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("로그인이 필요합니다.");
+      return;
+    }
+    if (!selectedRepo) {
+      setErrorMessage("분석할 GitHub 레포를 선택해 주세요.");
+      return;
+    }
+
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setIsAnalyzingRepo(true);
+    setErrorMessage(null);
+    try {
+      const res = await authFetch(`${apiBaseUrl}/api/github/repo-analysis`, auth.accessToken, {
+        method: "POST",
+        body: JSON.stringify({ fullName: selectedRepo }),
+      });
+      const data = (await res.json()) as GitHubRepoAnalyzeResponse;
+      setRepoAnalysis(data);
+    } catch (error) {
+      setRepoAnalysis(null);
+      setErrorMessage(error instanceof Error ? error.message : "GitHub 레포 분석 중 오류가 발생했습니다.");
+    } finally {
+      setIsAnalyzingRepo(false);
+    }
+  };
+
   return (
     <>
       <PageMeta title="Console | Sketch-to-Cloud" description="Sketch-to-Cloud 메인 대시보드" />
@@ -279,6 +379,105 @@ export default function SketchConsole() {
               {errorMessage}
             </div>
           ) : null}
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <button
+                type="button"
+                onClick={loadGitHubRepos}
+                disabled={isLoadingRepos}
+                className="h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {isLoadingRepos ? "레포 불러오는 중..." : "GitHub 레포 불러오기"}
+              </button>
+              <select
+                value={selectedRepo}
+                onChange={(event) => setSelectedRepo(event.target.value)}
+                className="h-10 min-w-[260px] rounded-md border border-slate-300 bg-white px-3 text-sm"
+                disabled={githubRepos.length === 0}
+              >
+                {githubRepos.length === 0 ? (
+                  <option value="">레포를 먼저 불러와 주세요</option>
+                ) : (
+                  githubRepos.map((repo) => (
+                    <option key={repo.fullName} value={repo.fullName}>
+                      {repo.fullName}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={analyzeSelectedGitHubRepo}
+                disabled={isAnalyzingRepo || !selectedRepo}
+                className="h-10 rounded-md bg-[#FF9900] px-4 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {isAnalyzingRepo ? "AWS 분석 중..." : "선택 레포 AWS 분석"}
+              </button>
+            </div>
+            {repoAnalysis ? (
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">{repoAnalysis.fullName}</p>
+                <p className="mt-1 text-sm text-slate-700">{repoAnalysis.summary}</p>
+                {repoAnalysis.findings.length > 0 ? (
+                  <>
+                    <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Findings</p>
+                    <ul className="mt-1 list-disc pl-5 text-sm text-slate-800">
+                      {repoAnalysis.findings.map((finding) => (
+                        <li key={finding}>{finding}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Recommended Stack
+                </p>
+                <p className="mt-1 text-sm text-slate-800">{repoAnalysis.recommendedStack.join(", ")}</p>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Deployment Steps
+                </p>
+                <ul className="mt-1 list-disc pl-5 text-sm text-slate-800">
+                  {repoAnalysis.deploymentSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ul>
+                {repoAnalysis.risks.length > 0 ? (
+                  <>
+                    <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Risks</p>
+                    <ul className="mt-1 list-disc pl-5 text-sm text-rose-700">
+                      {repoAnalysis.risks.map((risk) => (
+                        <li key={risk}>{risk}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {repoAnalysis.cost ? (
+                  <>
+                    <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Estimated Cost</p>
+                    <p className="mt-1 text-sm text-slate-800">
+                      {(repoAnalysis.cost.monthlyTotal ?? repoAnalysis.cost.monthly_total ?? 0).toLocaleString()}{" "}
+                      {repoAnalysis.cost.currency ?? "USD"} / month
+                    </p>
+                  </>
+                ) : null}
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Architecture JSON
+                  </summary>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
+                    {JSON.stringify(repoAnalysis.architectureJson, null, 2)}
+                  </pre>
+                </details>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Terraform Preview
+                  </summary>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
+                    {repoAnalysis.terraformCode}
+                  </pre>
+                </details>
+              </div>
+            ) : null}
+          </div>
           {analysisCoverage !== null && analysisCoverage < 0.75 ? (
             <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               요구사항 반영률이 낮습니다 ({Math.round(analysisCoverage * 100)}%). 미반영 힌트:{" "}

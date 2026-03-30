@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import json
@@ -33,6 +33,7 @@ from app.schemas.auth import (
     RegisterResponse,
     SocialSignupCompleteRequest,
 )
+from app.services.github_oauth_store import put_github_access_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -51,10 +52,16 @@ class SocialSignupRequired(Exception):
         super().__init__("social signup required")
 
 
+def _as_clean_text(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _normalize_social_provider(provider: str) -> str:
     normalized = provider.strip().lower()
     if normalized not in SUPPORTED_SOCIAL_PROVIDERS:
-        raise HTTPException(status_code=404, detail="지원하지 않는 소셜 로그인 제공자입니다.")
+        raise HTTPException(status_code=404, detail="吏?먰븯吏 ?딅뒗 ?뚯뀥 濡쒓렇???쒓났?먯엯?덈떎.")
     return normalized
 
 
@@ -71,10 +78,17 @@ def _social_frontend_redirect_url() -> str:
 
 def _social_config(provider: str, request: Request) -> dict[str, str]:
     env_prefix = provider.upper()
-    client_id = os.getenv(f"{env_prefix}_OAUTH_CLIENT_ID")
-    client_secret = os.getenv(f"{env_prefix}_OAUTH_CLIENT_SECRET")
+    client_id = os.getenv(f"{env_prefix}_OAUTH_CLIENT_ID") or os.getenv(f"{env_prefix}_CLIENT_ID")
+    client_secret = os.getenv(f"{env_prefix}_OAUTH_CLIENT_SECRET") or os.getenv(f"{env_prefix}_CLIENT_SECRET")
     if not client_id or not client_secret:
-        raise HTTPException(status_code=503, detail=f"{provider.upper()} OAuth 설정이 아직 완료되지 않았습니다.")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"{provider.upper()} OAuth 설정이 아직 완료되지 않았습니다. "
+                f"{env_prefix}_OAUTH_CLIENT_ID / {env_prefix}_OAUTH_CLIENT_SECRET "
+                f"(또는 {env_prefix}_CLIENT_ID / {env_prefix}_CLIENT_SECRET) 값을 설정해 주세요."
+            ),
+        )
 
     return {
         "provider": provider,
@@ -82,7 +96,6 @@ def _social_config(provider: str, request: Request) -> dict[str, str]:
         "client_secret": client_secret,
         "redirect_uri": str(request.url_for("social_callback", provider=provider)),
     }
-
 
 def _build_social_authorization_url(config: dict[str, str], state: str) -> str:
     params = {
@@ -101,7 +114,7 @@ def _build_social_authorization_url(config: dict[str, str], state: str) -> str:
         return "https://nid.naver.com/oauth2.0/authorize?" + urllib.parse.urlencode(params)
 
     if config["provider"] == "github":
-        params["scope"] = "read:user user:email"
+        params["scope"] = "read:user user:email repo read:org"
         return "https://github.com/login/oauth/authorize?" + urllib.parse.urlencode(params)
 
     return "https://kauth.kakao.com/oauth/authorize?" + urllib.parse.urlencode(params)
@@ -129,14 +142,14 @@ def _request_json(
             body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
-        raise HTTPException(status_code=502, detail=f"소셜 로그인 연동 중 오류가 발생했습니다. {detail}") from exc
+        raise HTTPException(status_code=502, detail=f"?뚯뀥 濡쒓렇???곕룞 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎. {detail}") from exc
     except urllib.error.URLError as exc:
-        raise HTTPException(status_code=502, detail="소셜 로그인 제공자와 통신할 수 없습니다.") from exc
+        raise HTTPException(status_code=502, detail="?뚯뀥 濡쒓렇???쒓났?먯? ?듭떊?????놁뒿?덈떎.") from exc
 
     try:
         return json.loads(body)
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail="소셜 로그인 응답을 해석할 수 없습니다.") from exc
+        raise HTTPException(status_code=502, detail="?뚯뀥 濡쒓렇???묐떟???댁꽍?????놁뒿?덈떎.") from exc
 
 
 def _exchange_social_code(config: dict[str, str], code: str, state: str) -> str:
@@ -154,7 +167,7 @@ def _exchange_social_code(config: dict[str, str], code: str, state: str) -> str:
         )
         access_token = response.get("access_token") if isinstance(response, dict) else None
         if not access_token:
-            raise HTTPException(status_code=502, detail="구글 액세스 토큰을 받지 못했습니다.")
+            raise HTTPException(status_code=502, detail="援ш? ?≪꽭???좏겙??諛쏆? 紐삵뻽?듬땲??")
         return str(access_token)
 
     if config["provider"] == "naver":
@@ -171,7 +184,7 @@ def _exchange_social_code(config: dict[str, str], code: str, state: str) -> str:
         )
         access_token = response.get("access_token") if isinstance(response, dict) else None
         if not access_token:
-            raise HTTPException(status_code=502, detail="네이버 액세스 토큰을 받지 못했습니다.")
+            raise HTTPException(status_code=502, detail="?ㅼ씠踰??≪꽭???좏겙??諛쏆? 紐삵뻽?듬땲??")
         return str(access_token)
 
     if config["provider"] == "github":
@@ -187,7 +200,7 @@ def _exchange_social_code(config: dict[str, str], code: str, state: str) -> str:
         )
         access_token = response.get("access_token") if isinstance(response, dict) else None
         if not access_token:
-            raise HTTPException(status_code=502, detail="GitHub 액세스 토큰을 받지 못했습니다.")
+            raise HTTPException(status_code=502, detail="GitHub ?≪꽭???좏겙??諛쏆? 紐삵뻽?듬땲??")
         return str(access_token)
 
     response = _request_json(
@@ -203,7 +216,7 @@ def _exchange_social_code(config: dict[str, str], code: str, state: str) -> str:
     )
     access_token = response.get("access_token") if isinstance(response, dict) else None
     if not access_token:
-        raise HTTPException(status_code=502, detail="카카오 액세스 토큰을 받지 못했습니다.")
+        raise HTTPException(status_code=502, detail="移댁뭅???≪꽭???좏겙??諛쏆? 紐삵뻽?듬땲??")
     return str(access_token)
 
 
@@ -213,12 +226,12 @@ def _load_social_profile(config: dict[str, str], access_token: str) -> dict[str,
     if config["provider"] == "google":
         response = _request_json("https://openidconnect.googleapis.com/v1/userinfo", headers=headers)
         if not isinstance(response, dict):
-            raise HTTPException(status_code=502, detail="구글 사용자 정보를 확인할 수 없습니다.")
-        provider_user_id = str(response.get("sub", "")).strip()
-        email = str(response.get("email", "")).strip()
-        display_name = str(response.get("name", "")).strip() or email.split("@")[0]
+            raise HTTPException(status_code=502, detail="援ш? ?ъ슜???뺣낫瑜??뺤씤?????놁뒿?덈떎.")
+        provider_user_id = _as_clean_text(response.get("sub", ""))
+        email = _as_clean_text(response.get("email", ""))
+        display_name = _as_clean_text(response.get("name", "")) or email.split("@")[0]
         if not provider_user_id:
-            raise HTTPException(status_code=502, detail="구글 사용자 정보를 확인할 수 없습니다.")
+            raise HTTPException(status_code=502, detail="援ш? ?ъ슜???뺣낫瑜??뺤씤?????놁뒿?덈떎.")
         return {
             "provider_user_id": provider_user_id,
             "email": email or f"google_{provider_user_id}@social.local",
@@ -228,15 +241,15 @@ def _load_social_profile(config: dict[str, str], access_token: str) -> dict[str,
     if config["provider"] == "naver":
         response = _request_json("https://openapi.naver.com/v1/nid/me", headers=headers)
         profile = response.get("response", {}) if isinstance(response, dict) else {}
-        provider_user_id = str(profile.get("id", "")).strip()
-        email = str(profile.get("email", "")).strip()
+        provider_user_id = _as_clean_text(profile.get("id", ""))
+        email = _as_clean_text(profile.get("email", ""))
         display_name = (
-            str(profile.get("name", "")).strip()
-            or str(profile.get("nickname", "")).strip()
+            _as_clean_text(profile.get("name", ""))
+            or _as_clean_text(profile.get("nickname", ""))
             or email.split("@")[0]
         )
         if not provider_user_id:
-            raise HTTPException(status_code=502, detail="네이버 사용자 정보를 확인할 수 없습니다.")
+            raise HTTPException(status_code=502, detail="?ㅼ씠踰??ъ슜???뺣낫瑜??뺤씤?????놁뒿?덈떎.")
         return {
             "provider_user_id": provider_user_id,
             "email": email or f"naver_{provider_user_id}@social.local",
@@ -247,12 +260,12 @@ def _load_social_profile(config: dict[str, str], access_token: str) -> dict[str,
         github_headers = headers | {"User-Agent": "Sketch-to-Cloud"}
         response = _request_json("https://api.github.com/user", headers=github_headers)
         if not isinstance(response, dict):
-            raise HTTPException(status_code=502, detail="GitHub 사용자 정보를 확인할 수 없습니다.")
-        provider_user_id = str(response.get("id", "")).strip()
-        email = str(response.get("email", "")).strip()
+            raise HTTPException(status_code=502, detail="GitHub ?ъ슜???뺣낫瑜??뺤씤?????놁뒿?덈떎.")
+        provider_user_id = _as_clean_text(response.get("id", ""))
+        email = _as_clean_text(response.get("email", ""))
         display_name = (
-            str(response.get("name", "")).strip()
-            or str(response.get("login", "")).strip()
+            _as_clean_text(response.get("name", ""))
+            or _as_clean_text(response.get("login", ""))
             or email.split("@")[0]
         )
         if not email:
@@ -274,9 +287,9 @@ def _load_social_profile(config: dict[str, str], access_token: str) -> dict[str,
                     ),
                     None,
                 )
-                email = str(primary_email or fallback_email or "").strip()
+                email = _as_clean_text(primary_email or fallback_email or "")
         if not provider_user_id:
-            raise HTTPException(status_code=502, detail="GitHub 사용자 정보를 확인할 수 없습니다.")
+            raise HTTPException(status_code=502, detail="GitHub ?ъ슜???뺣낫瑜??뺤씤?????놁뒿?덈떎.")
         return {
             "provider_user_id": provider_user_id,
             "email": email or f"github_{provider_user_id}@social.local",
@@ -286,15 +299,15 @@ def _load_social_profile(config: dict[str, str], access_token: str) -> dict[str,
     response = _request_json("https://kapi.kakao.com/v2/user/me", headers=headers)
     kakao_account = response.get("kakao_account", {}) if isinstance(response, dict) else {}
     profile = kakao_account.get("profile", {}) if isinstance(kakao_account, dict) else {}
-    provider_user_id = str(response.get("id", "")).strip()
-    email = str(kakao_account.get("email", "")).strip()
+    provider_user_id = _as_clean_text(response.get("id", ""))
+    email = _as_clean_text(kakao_account.get("email", ""))
     display_name = (
-        str(profile.get("nickname", "")).strip()
-        or str(profile.get("name", "")).strip()
+        _as_clean_text(profile.get("nickname", ""))
+        or _as_clean_text(profile.get("name", ""))
         or email.split("@")[0]
     )
     if not provider_user_id:
-        raise HTTPException(status_code=502, detail="카카오 사용자 정보를 확인할 수 없습니다.")
+        raise HTTPException(status_code=502, detail="移댁뭅???ъ슜???뺣낫瑜??뺤씤?????놁뒿?덈떎.")
     return {
         "provider_user_id": provider_user_id,
         "email": email or f"kakao_{provider_user_id}@social.local",
@@ -369,7 +382,7 @@ def _complete_social_signup(
 
     existing_email = db.scalars(select(User).where(User.email == email).limit(1)).first()
     if existing_email:
-        raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다. 기존 계정으로 로그인해 주세요.")
+        raise HTTPException(status_code=409, detail="?대? ?ъ슜 以묒씤 ?대찓?쇱엯?덈떎. 湲곗〈 怨꾩젙?쇰줈 濡쒓렇?명빐 二쇱꽭??")
 
     user = User(
         login_id=_generate_social_login_id(db, provider, email, provider_user_id),
@@ -486,11 +499,11 @@ def _redirect_social_result(
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     existing_email = db.scalars(select(User).where(User.email == payload.email).limit(1)).first()
     if existing_email:
-        raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다.")
+        raise HTTPException(status_code=409, detail="?대? ?ъ슜 以묒씤 ?대찓?쇱엯?덈떎.")
 
     existing_login = db.scalars(select(User).where(User.login_id == payload.loginId).limit(1)).first()
     if existing_login:
-        raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
+        raise HTTPException(status_code=409, detail="?대? ?ъ슜 以묒씤 ?꾩씠?붿엯?덈떎.")
 
     user = User(
         login_id=payload.loginId,
@@ -520,10 +533,10 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     user = db.scalars(select(User).where(User.login_id == payload.loginId).limit(1)).first()
     if not user:
-        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 일치하지 않습니다.")
+        raise HTTPException(status_code=401, detail="?꾩씠???먮뒗 鍮꾨?踰덊샇媛 ?쇱튂?섏? ?딆뒿?덈떎.")
 
     if not user.password_hash or user.password_hash != hash_text(payload.password):
-        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 일치하지 않습니다.")
+        raise HTTPException(status_code=401, detail="?꾩씠???먮뒗 鍮꾨?踰덊샇媛 ?쇱튂?섏? ?딆뒿?덈떎.")
 
     return _issue_login_response(db, user)
 
@@ -544,11 +557,11 @@ def complete_social_signup(
     except IntegrityError:
         db.rollback()
         logger.exception("Social signup integrity error for provider=%s", payload.provider)
-        raise HTTPException(status_code=409, detail="소셜 계정 가입 처리 중 중복 데이터가 발생했습니다.")
+        raise HTTPException(status_code=409, detail="?뚯뀥 怨꾩젙 媛??泥섎━ 以?以묐났 ?곗씠?곌? 諛쒖깮?덉뒿?덈떎.")
     except SQLAlchemyError:
         db.rollback()
         logger.exception("Social signup database error for provider=%s", payload.provider)
-        raise HTTPException(status_code=500, detail="소셜 계정 가입 처리 중 데이터 저장에 실패했습니다.")
+        raise HTTPException(status_code=500, detail="?뚯뀥 怨꾩젙 媛??泥섎━ 以??곗씠????μ뿉 ?ㅽ뙣?덉뒿?덈떎.")
 
 
 @router.get("/api/auth/social/{provider}/start")
@@ -573,15 +586,15 @@ def social_callback(
     normalized_provider = _normalize_social_provider(provider)
 
     if error:
-        return _redirect_social_result(error=f"{normalized_provider} 로그인에 실패했습니다: {error}")
+        return _redirect_social_result(error=f"{normalized_provider} 濡쒓렇?몄뿉 ?ㅽ뙣?덉뒿?덈떎: {error}")
 
     if not code or not state:
-        return _redirect_social_result(error="소셜 로그인 응답에 필요한 값이 누락되었습니다.")
+        return _redirect_social_result(error="?뚯뀥 濡쒓렇???묐떟???꾩슂??媛믪씠 ?꾨씫?섏뿀?듬땲??")
 
     _prune_social_states()
     stored_provider, expires_at = SOCIAL_STATE_STORE.pop(state, ("", datetime.now(timezone.utc)))
     if stored_provider != normalized_provider or expires_at <= datetime.now(timezone.utc):
-        return _redirect_social_result(error="소셜 로그인 요청이 만료되었거나 올바르지 않습니다.")
+        return _redirect_social_result(error="?뚯뀥 濡쒓렇???붿껌??留뚮즺?섏뿀嫄곕굹 ?щ컮瑜댁? ?딆뒿?덈떎.")
 
     try:
         config = _social_config(normalized_provider, request)
@@ -594,6 +607,9 @@ def social_callback(
             email=social_profile["email"],
             display_name=social_profile["display_name"],
         )
+        if normalized_provider == "github":
+            put_github_access_token(db, login_response.user.userId, provider_access_token)
+            db.commit()
     except HTTPException as exc:
         return _redirect_social_result(error=str(exc.detail))
     except SocialSignupRequired as exc:
@@ -608,15 +624,15 @@ def social_callback(
     except IntegrityError:
         db.rollback()
         logger.exception("Social login integrity error for provider=%s", normalized_provider)
-        return _redirect_social_result(error="소셜 로그인 계정 연결 중 중복 데이터가 발생했습니다. 다시 시도해 주세요.")
+        return _redirect_social_result(error="?뚯뀥 濡쒓렇??怨꾩젙 ?곌껐 以?以묐났 ?곗씠?곌? 諛쒖깮?덉뒿?덈떎. ?ㅼ떆 ?쒕룄??二쇱꽭??")
     except SQLAlchemyError:
         db.rollback()
         logger.exception("Social login database error for provider=%s", normalized_provider)
-        return _redirect_social_result(error="소셜 로그인 중 데이터 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+        return _redirect_social_result(error="?뚯뀥 濡쒓렇??以??곗씠????μ뿉 ?ㅽ뙣?덉뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄??二쇱꽭??")
     except Exception:
         db.rollback()
         logger.exception("Unexpected social login error for provider=%s", normalized_provider)
-        return _redirect_social_result(error="소셜 로그인 처리 중 알 수 없는 오류가 발생했습니다.")
+        return _redirect_social_result(error="?뚯뀥 濡쒓렇??泥섎━ 以??????녿뒗 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.")
 
     return _redirect_social_result(payload=_encode_social_callback_payload(login_response, normalized_provider))
 
