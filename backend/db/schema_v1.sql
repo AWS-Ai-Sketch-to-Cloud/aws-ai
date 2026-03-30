@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS auth_identities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider VARCHAR(30) NOT NULL
-        CHECK (provider IN ('LOCAL', 'GOOGLE', 'GITHUB')),
+        CHECK (provider IN ('LOCAL', 'GOOGLE', 'GITHUB', 'NAVER', 'KAKAO')),
     provider_user_id VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

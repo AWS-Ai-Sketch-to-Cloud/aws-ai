@@ -1,5 +1,5 @@
-﻿import { FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { toast } from "../../hooks/use-toast";
 import { getApiErrorMessage } from "../../lib/api-error";
@@ -18,6 +18,7 @@ const API_BASE_URL =
   "http://127.0.0.1:8000";
 
 export default function SignupPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState("");
   const [loginId, setLoginId] = useState("");
@@ -25,6 +26,24 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<SignupFieldErrors>({});
+
+  const signupContext = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      provider: params.get("provider"),
+      email: params.get("email"),
+      displayName: params.get("displayName"),
+    };
+  }, [location.search]);
+
+  useEffect(() => {
+    if (signupContext.email) {
+      setEmail(signupContext.email);
+    }
+    if (signupContext.displayName) {
+      setDisplayName(signupContext.displayName);
+    }
+  }, [signupContext.displayName, signupContext.email]);
 
   const applyRegisterApiError = (status: number, message: string) => {
     if (status === 409) {
@@ -126,6 +145,12 @@ export default function SignupPage() {
               <p className="mt-3 text-sm leading-6 text-gray-500">
                 정보를 입력하면 계정이 생성됩니다.
               </p>
+              {signupContext.provider ? (
+                <div className="mt-4 rounded-2xl border border-[#FFE0B5] bg-[#FFF7EC] px-4 py-3 text-sm text-[#7A4B00]">
+                  {signupContext.provider.toUpperCase()} 계정으로 로그인하려면 먼저 회원가입이
+                  필요합니다.
+                </div>
+              ) : null}
 
               <form className="mt-8 space-y-5" onSubmit={onSubmit}>
                 <label className="block">
@@ -246,22 +271,20 @@ export default function SignupPage() {
                     </p>
                   ) : (
                     <div className="mt-2 rounded-xl border border-[#FFE0B5] bg-[#FFF7EC] px-3 py-3 text-sm text-[#7A4B00]">
-                      <p className="font-medium text-[#5E3A00]">
-                        비밀번호 안내
-                      </p>
+                      <p className="font-medium text-[#5E3A00]">비밀번호 안내</p>
                       <ul className="mt-2 list-disc space-y-1 pl-5 marker:text-[#FF9900]">
                         <li>8자 이상 128자 이하로 입력해 주세요.</li>
                         <li>
-                          대문자, 소문자, 숫자, 특수문자 중 2종류 이상을
-                          포함해야 합니다.
+                          대문자, 소문자, 숫자, 특수문자 중 2종류 이상을 포함해야
+                          합니다.
                         </li>
                         <li>
                           특수문자는 ! @ # $ % ^ &amp; * ( ) - _ = + [ ] {"{"}
                           {"}"} ; : , . ? / | 만 사용할 수 있습니다.
                         </li>
                         <li>
-                          공백, 동일 숫자 3자리 연속, 연속 숫자 3자리 이상은
-                          사용할 수 없습니다.
+                          공백, 동일 숫자 3자리 연속, 연속 숫자 3자리 이상은 사용할 수
+                          없습니다.
                         </li>
                       </ul>
                     </div>
