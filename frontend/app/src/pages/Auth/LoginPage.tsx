@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useState } from "react";
-import { Info } from "lucide-react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconProp } from "@fortawesome/fontawesome-svg-core";
 import { Link, useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { toast } from "../../hooks/use-toast";
@@ -41,6 +42,8 @@ type SocialButton = {
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   "http://127.0.0.1:8000";
+
+const githubInfoIcon = ["fas", "circle-info"] as IconProp;
 
 const SOCIAL_BUTTONS: SocialButton[] = [
   {
@@ -382,10 +385,10 @@ export default function LoginPage() {
                         </button>
                         {socialButton.key === "github" ? (
                           <span
-                            className="pointer-events-none absolute z-[300] flex h-5 w-5 items-center justify-center text-black"
+                            className="pointer-events-none absolute z-[300] flex h-5 w-5 items-center justify-center rounded-full border border-white bg-black text-white"
                             style={{ right: "-10px", top: "-10px" }}
                           >
-                            <Info className="h-4 w-4 stroke-[2.4]" />
+                            <FontAwesomeIcon icon={githubInfoIcon} className="text-[13px]" />
                           </span>
                         ) : null}
                         {socialButton.tooltip &&
