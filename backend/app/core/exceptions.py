@@ -1,8 +1,12 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from fastapi import Request
+import json
+
+from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from app.core.request_context import get_request_id
 
 
 def extract_validation_message(exc: RequestValidationError) -> str:
@@ -21,4 +25,46 @@ def extract_validation_message(exc: RequestValidationError) -> str:
 async def request_validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    return JSONResponse(status_code=422, content={"detail": extract_validation_message(exc)})
+    del request
+    return JSONResponse(
+        status_code=422,
+        content={"detail": extract_validation_message(exc), "requestId": get_request_id()},
+    )
+
+
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    request_id = get_request_id()
+    if exc.status_code >= 500:
+        print(
+            json.dumps(
+                {
+                    "type": "http_error",
+                    "requestId": request_id,
+                    "status": exc.status_code,
+                    "path": request.url.path,
+                    "detail": exc.detail,
+                },
+                ensure_ascii=False,
+            )
+        )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "requestId": request_id})
+
+
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    request_id = get_request_id()
+    print(
+        json.dumps(
+            {
+                "type": "unhandled_error",
+                "requestId": request_id,
+                "path": request.url.path,
+                "errorType": type(exc).__name__,
+                "error": str(exc),
+            },
+            ensure_ascii=False,
+        )
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "서버 내부 오류가 발생했습니다.", "requestId": request_id},
+    )

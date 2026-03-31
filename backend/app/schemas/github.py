@@ -20,8 +20,22 @@ class GitHubRepoListResponse(BaseModel):
     contractVersion: str = CONTRACT_VERSION
 
 
+class GitHubConnectionStatusResponse(BaseModel):
+    oauthConfigured: bool
+    tokenPresent: bool
+    tokenValid: bool
+    githubApiReachable: bool
+    accountLogin: str | None = None
+    privateRepoAccess: bool = False
+    estimatedRepoCount: int | None = None
+    issues: list[str]
+    contractVersion: str = CONTRACT_VERSION
+
+
 class GitHubRepoAnalyzeRequest(BaseModel):
     fullName: str = Field(min_length=3, max_length=200)
+    mode: str = Field(default="deep", pattern="^(deep)$")
+    forceRefresh: bool = False
 
 
 class GitHubRepoAnalyzeResponse(BaseModel):
@@ -41,4 +55,13 @@ class GitHubRepoAnalyzeResponse(BaseModel):
     architectureJson: dict[str, object]
     terraformCode: str
     cost: dict[str, object]
+    confidenceScore: float
+    confidenceLabel: str
+    evidenceFiles: list[str]
+    analysisProvider: str
+    fallbackUsed: bool
+    analysisMode: str
+    cacheHit: bool
+    confidenceReasons: list[str]
+    improvementActions: list[str]
     contractVersion: str = CONTRACT_VERSION

@@ -49,3 +49,6 @@ terraform/*.tfstate.*
 terraform/tfplan
 terraform/terraform.tfvars
 
+# Backend runtime logs
+backend/logs/
+
