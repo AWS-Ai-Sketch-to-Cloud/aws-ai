@@ -1,12 +1,14 @@
-name: backend-tests
+name: repo-analysis-eval
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/repo-analysis-eval.yml"
+  workflow_dispatch:
 
 jobs:
-  test:
+  eval:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -16,11 +18,12 @@ jobs:
       BEDROCK_FALLBACK_ENABLED: "false"
       GITHUB_REPO_ANALYSIS_AI_ONLY: "false"
       GITHUB_TOKEN_ENCRYPTION_KEY: "ci-security-baseline-key-should-be-long-enough-123456"
+      PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -30,6 +33,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run backend preflight gate
-        run: python scripts/preflight_check.py --skip-smoke --min-score 0.75
-
+      - name: Run repo analysis evaluation gate
+        run: |
+          python scripts/preflight_check.py --skip-smoke --min-score 0.75

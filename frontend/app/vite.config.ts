@@ -20,4 +20,19 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("react") || id.includes("scheduler")) return "vendor-react";
+          if (id.includes("@radix-ui")) return "vendor-radix";
+          if (id.includes("recharts") || id.includes("apexcharts") || id.includes("fullcalendar")) {
+            return "vendor-charts";
+          }
+          return "vendor-misc";
+        },
+      },
+    },
+  },
 });

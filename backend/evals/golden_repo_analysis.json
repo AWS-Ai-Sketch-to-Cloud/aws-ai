@@ -1,0 +1,67 @@
+{
+  "version": "v1",
+  "cases": [
+    {
+      "id": "static_portfolio",
+      "repo_prompt": "Repository: devs/portfolio-site\nDefault branch: main\nDescription: personal portfolio website\nTopics: portfolio, frontend, static\n\nFile tree sample:\n- README.md\n- index.html\n- styles/main.css\n- scripts/app.js\n\nImportant file snippets:\n[readme.md]\nThis is my personal portfolio and resume website. Static pages only.\n\nTask: Infer realistic AWS deployment architecture for this repository.",
+      "expected": {
+        "recommended_any": [
+          "Amazon S3",
+          "AWS Amplify Hosting",
+          "Amazon CloudFront"
+        ],
+        "forbidden_all": [
+          "Amazon EKS",
+          "Amazon ECS (Fargate)"
+        ],
+        "ec2_max": 1,
+        "rds_enabled": false,
+        "must_be_korean": true
+      }
+    },
+    {
+      "id": "container_api",
+      "repo_prompt": "Repository: team/api-service\nDefault branch: main\nDescription: FastAPI backend for ecommerce API\nTopics: backend, fastapi, docker\n\nFile tree sample:\n- README.md\n- Dockerfile\n- requirements.txt\n- app/main.py\n- .github/workflows/deploy.yml\n\nImportant file snippets:\n[readme.md]\nBackend API server using FastAPI and PostgreSQL. Deployed with Docker.\n\n[requirements.txt]\nfastapi==0.116.1\nuvicorn==0.35.0\nsqlalchemy==2.0.43\npsycopg[binary]==3.2.10\n\nTask: Infer realistic AWS deployment architecture for this repository.",
+      "expected": {
+        "recommended_any": [
+          "Amazon ECS (Fargate)",
+          "Amazon EC2"
+        ],
+        "architecture_services_any": [
+          "ecs",
+          "alb"
+        ],
+        "rds_enabled": true,
+        "must_be_korean": true
+      }
+    },
+    {
+      "id": "serverless_worker",
+      "repo_prompt": "Repository: acme/event-worker\nDefault branch: main\nDescription: serverless event processor\nTopics: lambda, serverless\n\nFile tree sample:\n- README.md\n- serverless.yml\n- handler.py\n\nImportant file snippets:\n[readme.md]\nProcesses webhook events with AWS Lambda and pushes notifications.\n\nTask: Infer realistic AWS deployment architecture for this repository.",
+      "expected": {
+        "recommended_any": [
+          "AWS Lambda"
+        ],
+        "architecture_services_any": [
+          "lambda",
+          "apigateway"
+        ],
+        "ec2_max": 1,
+        "must_be_korean": true
+      }
+    },
+    {
+      "id": "k8s_platform",
+      "repo_prompt": "Repository: corp/platform-core\nDefault branch: develop\nDescription: kubernetes platform for internal services\nTopics: kubernetes, platform\n\nFile tree sample:\n- README.md\n- k8s/deployment.yaml\n- k8s/service.yaml\n- Dockerfile\n\nImportant file snippets:\n[readme.md]\nRuns multiple internal microservices on Kubernetes. Needs ingress and observability.\n\nTask: Infer realistic AWS deployment architecture for this repository.",
+      "expected": {
+        "recommended_any": [
+          "Amazon EKS"
+        ],
+        "architecture_services_any": [
+          "eks"
+        ],
+        "must_be_korean": true
+      }
+    }
+  ]
+}

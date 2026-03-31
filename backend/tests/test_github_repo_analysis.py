@@ -1,64 +1,81 @@
 from __future__ import annotations
 
-from app.services.github_repo_analysis import build_repo_analysis
+from app.services.github_ai_report import generate_repo_report_with_ai
+from app.routers.github import _build_confidence
 
 
-def test_repo_analysis_recommends_ecs_for_docker_repo() -> None:
-    result = build_repo_analysis(
-        full_name="acme/api-service",
-        default_branch="main",
-        files=[
-            "Dockerfile",
-            "requirements.txt",
-            "app/main.py",
-            ".github/workflows/deploy.yml",
-        ],
-        file_contents={
-            "readme.md": "Backend API service",
-            "requirements.txt": "fastapi==0.116.1",
-            ".github/workflows/deploy.yml": "name: deploy",
+def _sample_architecture() -> dict:
+    return {
+        "vpc": True,
+        "ec2": {"count": 1, "instance_type": "t3.micro"},
+        "rds": {"enabled": False, "engine": None},
+        "bedrock": {"enabled": False, "model": None},
+        "additional_services": ["s3", "cloudfront", "route53"],
+        "usage": {
+            "monthly_hours": 730,
+            "data_transfer_gb": 60,
+            "storage_gb": 10,
+            "requests_million": 2,
         },
+        "public": True,
+        "region": "ap-northeast-2",
+    }
+
+
+def test_ai_report_fallback_when_bedrock_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("BEDROCK_ENABLED", "false")
+    monkeypatch.setenv("BEDROCK_STRICT_MODE", "false")
+    monkeypatch.setenv("BEDROCK_FALLBACK_ENABLED", "true")
+    report, meta = generate_repo_report_with_ai(
+        repo_prompt="Repository: acme/acme.github.io",
+        architecture=_sample_architecture(),
+        model_rationale={"summary": "static profile"},
     )
 
-    assert result["recommendedStack"][0] == "Amazon ECS (Fargate)"
-    assert result["detected"]["dockerfile"] is True
-    assert result["detected"]["githubActions"] is True
-    assert any("ECS Fargate" in step for step in result["deploymentSteps"])
+    assert report["summary"]
+    assert report["recommendedStack"]
+    assert report["deploymentSteps"]
+    assert report["costNotes"]
+    assert meta["provider"] == "local_fallback"
+    assert meta["fallbackUsed"] is True
 
 
-def test_repo_analysis_recommends_amplify_for_frontend_only_repo() -> None:
-    result = build_repo_analysis(
-        full_name="acme/web-app",
-        default_branch="main",
-        files=[
-            "package.json",
-            "vite.config.ts",
-            "src/main.tsx",
-        ],
-        file_contents={
-            "package.json": '{"dependencies":{"react":"^19.0.0","vite":"^6.0.0"}}',
-            "readme.md": "Frontend web app",
-        },
+def test_ai_report_fallback_contains_beginner_steps(monkeypatch) -> None:
+    monkeypatch.setenv("BEDROCK_ENABLED", "false")
+    monkeypatch.setenv("BEDROCK_STRICT_MODE", "false")
+    monkeypatch.setenv("BEDROCK_FALLBACK_ENABLED", "true")
+    report, _ = generate_repo_report_with_ai(
+        repo_prompt="Repository: acme/simple-web",
+        architecture=_sample_architecture(),
+        model_rationale={},
     )
 
-    assert result["recommendedStack"][0] == "AWS Amplify Hosting"
-    assert "Node.js/TypeScript" in result["languageHints"]
-    assert result["architecture"]["rds"]["enabled"] is False
+    assert any("배포" in step or "파이프라인" in step for step in report["deploymentSteps"])
 
 
-def test_repo_analysis_steps_are_not_static_across_profiles() -> None:
-    ecs_result = build_repo_analysis(
-        full_name="acme/ecs-app",
-        default_branch="main",
-        files=["Dockerfile", "app/main.py"],
-        file_contents={"readme.md": "containerized backend"},
+def test_ai_report_strict_mode_blocks_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("BEDROCK_ENABLED", "false")
+    monkeypatch.setenv("BEDROCK_STRICT_MODE", "true")
+    monkeypatch.setenv("BEDROCK_FALLBACK_ENABLED", "false")
+
+    try:
+        generate_repo_report_with_ai(
+            repo_prompt="Repository: acme/simple-web",
+            architecture=_sample_architecture(),
+            model_rationale={},
+        )
+        assert False, "strict mode should raise when bedrock is disabled"
+    except RuntimeError as exc:
+        assert "BEDROCK_ENABLED" in str(exc)
+
+
+def test_confidence_scoring_and_label() -> None:
+    score, label, provider, fallback_used = _build_confidence(
+        analysis_meta={"provider": "bedrock", "fallbackUsed": False, "requirementCoverage": 0.9},
+        detected_flags={"dockerfile": True, "k8sManifests": False, "serverlessConfig": False, "terraform": True, "cdk": False, "githubActions": True, "readme": True},
+        evidence_files=["readme.md", "package.json", "dockerfile", ".github/workflows/deploy.yml"],
     )
-    eks_result = build_repo_analysis(
-        full_name="acme/eks-app",
-        default_branch="develop",
-        files=["k8s/deployment.yaml", "Dockerfile", "app/main.py"],
-        file_contents={"readme.md": "kubernetes deployment"},
-    )
-
-    assert ecs_result["deploymentSteps"] != eks_result["deploymentSteps"]
-    assert any("EKS" in step for step in eks_result["deploymentSteps"])
+    assert 0 <= score <= 1
+    assert label in {"높음", "중간", "낮음"}
+    assert provider == "bedrock"
+    assert fallback_used is False

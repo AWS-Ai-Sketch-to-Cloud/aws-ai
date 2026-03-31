@@ -2,7 +2,7 @@
 
 ## uvicorn app.main:app --reload
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,9 +11,20 @@ from app.core.env import load_env_file
 load_env_file()
 
 from app.core.constants import CONTRACT_VERSION
-from app.core.exceptions import request_validation_exception_handler
+from app.core.exceptions import (
+    http_exception_handler,
+    request_validation_exception_handler,
+    unhandled_exception_handler,
+)
+from app.core.middleware import (
+    AuthRateLimitMiddleware,
+    RequestIdAndAccessLogMiddleware,
+    SecurityHeadersMiddleware,
+    auth_rate_limit,
+)
 from app.routers.auth import router as auth_router
 from app.routers.github import router as github_router
+from app.routers.ops import router as ops_router
 from app.routers.projects import router as projects_router
 from app.routers.sessions import router as sessions_router
 from app.routers.uploads import router as uploads_router
@@ -27,6 +38,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
+rate_limit, rate_window = auth_rate_limit()
+app.add_middleware(AuthRateLimitMiddleware, limit=rate_limit, window_seconds=rate_window)
+app.add_middleware(RequestIdAndAccessLogMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.get("/")
@@ -36,6 +53,7 @@ def healthcheck() -> dict[str, str]:
 
 app.include_router(auth_router)
 app.include_router(github_router)
+app.include_router(ops_router)
 app.include_router(projects_router)
 app.include_router(sessions_router)
 app.include_router(uploads_router)
