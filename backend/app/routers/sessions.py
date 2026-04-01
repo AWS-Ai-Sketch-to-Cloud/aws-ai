@@ -1,8 +1,5 @@
 ﻿from __future__ import annotations
 
-from typing import Any
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException
 from jsonschema import ValidationError, validate
 from sqlalchemy import select
@@ -22,8 +19,6 @@ from app.schemas.session import (
     CostCalculateResponse,
     ErrorPayload,
     SessionCompareResponse,
-    SessionCreateRequest,
-    SessionCreateResponse,
     SessionDetailArchitecture,
     SessionDetailCost,
     SessionDetailError,
@@ -51,6 +46,59 @@ from app.terraform_generator import generate_terraform_from_architecture
 from app.terraform_validator import validate_terraform_code
 
 router = APIRouter()
+
+
+def _analyze_session_impl(
+    session_id: str,
+    payload: AnalyzeRequest,
+    db: Session,
+    current_user: User,
+) -> AnalyzeResponse:
+    session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
+    transition_session_status(db, session, "ANALYZING")
+    session.input_text = payload.input_text
+    session.input_type = "SKETCH" if payload.input_type == "sketch" else "TEXT"
+    db.commit()
+
+    try:
+        parsed, analysis_meta = parse_architecture_with_retry(
+            payload.input_text, ARCH_SCHEMA, payload.input_image_data_url
+        )
+
+        architecture = db.scalars(
+            select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
+        ).first()
+        if architecture:
+            architecture.architecture_json = parsed
+            architecture.schema_version = CONTRACT_VERSION
+        else:
+            architecture = SessionArchitecture(
+                session_id=session.id,
+                schema_version=CONTRACT_VERSION,
+                architecture_json=parsed,
+            )
+            db.add(architecture)
+
+        transition_session_status(db, session, "ANALYZED")
+        record_session_event(db, session, "ARCHITECTURE_GENERATED", {"schemaVersion": CONTRACT_VERSION})
+        db.commit()
+        return AnalyzeResponse(
+            session_id=session_id,
+            status="generated",
+            parsed_json=parsed,
+            analysisMeta=AnalysisMeta(**analysis_meta),
+        )
+    except AIParseError as e:
+        transition_session_status(db, session, "FAILED", error_code=e.code, error_message=e.message)
+        db.commit()
+        return AnalyzeResponse(session_id=session_id, status="failed", error=ErrorPayload(code=e.code, message=e.message))
+    except Exception as e:  # noqa: BLE001
+        transition_session_status(db, session, "FAILED", error_code="INTERNAL_ERROR", error_message=str(e))
+        db.commit()
+        return AnalyzeResponse(
+            session_id=session_id, status="failed", error=ErrorPayload(code="INTERNAL_ERROR", message=str(e))
+        )
 
 
 @router.post("/api/sessions/{session_id}/architecture", response_model=SessionResultResponse)
@@ -342,119 +390,11 @@ def calculate_cost(
         raise HTTPException(status_code=500, detail="cost calculation failed") from e
 
 
-@router.post("/sessions", response_model=SessionCreateResponse)
-def create_session(payload: SessionCreateRequest, db: Session = Depends(get_db)) -> SessionCreateResponse:
-    try:
-        pid = UUID(payload.project_id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="project_id must be UUID") from e
-
-    project = db.get(Project, pid)
-    if not project:
-        raise HTTPException(status_code=404, detail="project not found")
-
-    latest = db.scalars(
-        select(AppSession).where(AppSession.project_id == pid).order_by(AppSession.version_no.desc()).limit(1)
-    ).first()
-    next_version = 1 if not latest else latest.version_no + 1
-
-    session = AppSession(
-        project_id=pid,
-        version_no=next_version,
-        input_type="TEXT",
-        input_text="",
-        status="CREATED",
-    )
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-
-    return SessionCreateResponse(
-        session_id=str(session.id),
-        project_id=str(session.project_id),
-        status="created",
-        created_at=dt_to_iso(session.created_at),
-    )
-
-
-@router.post("/sessions/{session_id}/analyze", response_model=AnalyzeResponse)
-def analyze_session(
+@router.post("/api/sessions/{session_id}/analyze", response_model=AnalyzeResponse)
+def analyze_session_api(
     session_id: str,
     payload: AnalyzeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> AnalyzeResponse:
-    session = get_session_or_404(db, session_id)
-    ensure_session_access(session, current_user)
-    transition_session_status(db, session, "ANALYZING")
-    session.input_text = payload.input_text
-    session.input_type = "SKETCH" if payload.input_type == "sketch" else "TEXT"
-    db.commit()
-
-    try:
-        parsed, analysis_meta = parse_architecture_with_retry(
-            payload.input_text, ARCH_SCHEMA, payload.input_image_data_url
-        )
-
-        architecture = db.scalars(
-            select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
-        ).first()
-        if architecture:
-            architecture.architecture_json = parsed
-            architecture.schema_version = CONTRACT_VERSION
-        else:
-            architecture = SessionArchitecture(
-                session_id=session.id,
-                schema_version=CONTRACT_VERSION,
-                architecture_json=parsed,
-            )
-            db.add(architecture)
-
-        transition_session_status(db, session, "ANALYZED")
-        record_session_event(db, session, "ARCHITECTURE_GENERATED", {"schemaVersion": CONTRACT_VERSION})
-        db.commit()
-        return AnalyzeResponse(
-            session_id=session_id,
-            status="generated",
-            parsed_json=parsed,
-            analysisMeta=AnalysisMeta(**analysis_meta),
-        )
-    except AIParseError as e:
-        transition_session_status(db, session, "FAILED", error_code=e.code, error_message=e.message)
-        db.commit()
-        return AnalyzeResponse(session_id=session_id, status="failed", error=ErrorPayload(code=e.code, message=e.message))
-    except Exception as e:  # noqa: BLE001
-        transition_session_status(db, session, "FAILED", error_code="INTERNAL_ERROR", error_message=str(e))
-        db.commit()
-        return AnalyzeResponse(
-            session_id=session_id, status="failed", error=ErrorPayload(code="INTERNAL_ERROR", message=str(e))
-        )
-
-
-@router.get("/sessions/{session_id}")
-def get_session(
-    session_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    session = get_session_or_404(db, session_id)
-    ensure_session_access(session, current_user)
-    architecture = db.scalars(
-        select(SessionArchitecture).where(SessionArchitecture.session_id == session.id).limit(1)
-    ).first()
-    error = (
-        {"code": session.error_code, "message": session.error_message}
-        if (session.error_code or session.error_message)
-        else None
-    )
-    return {
-        "session_id": str(session.id),
-        "project_id": str(session.project_id),
-        "status": session.status,
-        "input_text": session.input_text or "",
-        "parsed_json": architecture.architecture_json if architecture else None,
-        "error": error,
-        "created_at": dt_to_iso(session.created_at),
-        "updated_at": dt_to_iso(session.updated_at),
-        "contract_version": CONTRACT_VERSION,
-    }
+    return _analyze_session_impl(session_id, payload, db, current_user)

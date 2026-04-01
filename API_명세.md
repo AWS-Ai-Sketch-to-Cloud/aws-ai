@@ -57,6 +57,7 @@
 | `POST` | `/api/projects/{projectId}/sessions` | 특정 프로젝트 아래에 새 작업 세션을 생성한다. |
 | `GET` | `/api/projects/{projectId}/sessions` | 특정 프로젝트의 세션 목록과 상태를 조회한다. |
 | `GET` | `/api/sessions/{sessionId}` | 세션의 입력, 상태, 아키텍처, Terraform, 비용 결과를 한 번에 조회한다. |
+| `POST` | `/api/sessions/{sessionId}/analyze` | 텍스트/스케치 입력을 분석해 세션의 아키텍처 JSON 결과를 생성한다. |
 | `PATCH` | `/api/sessions/{sessionId}/status` | 세션 상태와 오류 정보를 갱신한다. |
 
 ### 결과 생성/저장
@@ -384,6 +385,64 @@
 
 비고:
 - 내부 서비스 로직용으로만 유지해도 됨
+
+### `POST /api/sessions/{sessionId}/analyze`
+
+- 텍스트 또는 스케치 입력을 분석해 세션의 아키텍처 JSON 결과를 생성한다.
+- 생성 성공 시 세션 상태는 `ANALYZED`가 된다.
+- 이 엔드포인트는 프론트의 공식 분석 시작 경로다.
+
+요청:
+
+```json
+{
+  "input_text": "EC2 2개와 MySQL RDS 1개를 프라이빗하게 구성",
+  "input_type": "text",
+  "input_image_data_url": null
+}
+```
+
+스케치 입력 예시:
+
+```json
+{
+  "input_text": "Analyze the uploaded architecture diagram and infer AWS resources and counts precisely.",
+  "input_type": "sketch",
+  "input_image_data_url": "data:image/png;base64,..."
+}
+```
+
+응답:
+
+```json
+{
+  "session_id": "uuid",
+  "status": "generated",
+  "parsed_json": {
+    "vpc": true,
+    "ec2": {
+      "count": 2,
+      "instance_type": "t3.micro"
+    },
+    "rds": {
+      "enabled": true,
+      "engine": "mysql"
+    },
+    "public": false,
+    "region": "ap-northeast-2"
+  },
+  "analysisMeta": {
+    "provider": "bedrock",
+    "modelId": "model-id",
+    "usedImage": false,
+    "fallbackUsed": false
+  },
+  "contract_version": "v2"
+}
+```
+
+비고:
+- 레거시 `/sessions/...` 계열 엔드포인트는 정리되었으며, 분석 시작 경로는 `/api/sessions/{sessionId}/analyze`만 사용한다.
 
 ## 4. 결과 저장/생성
 

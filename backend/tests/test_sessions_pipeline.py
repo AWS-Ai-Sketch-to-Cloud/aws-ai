@@ -38,10 +38,24 @@ def _create_auth_headers(client: TestClient) -> dict[str, str]:
 def test_analyze_requires_auth() -> None:
     client = TestClient(app)
     response = client.post(
-        "/sessions/00000000-0000-0000-0000-000000000000/analyze",
+        "/api/sessions/00000000-0000-0000-0000-000000000000/analyze",
         json={"input_text": "test", "input_type": "text"},
     )
     assert response.status_code == 401
+
+
+def test_removed_legacy_session_routes_return_not_found() -> None:
+    client = TestClient(app)
+    create_response = client.post("/sessions", json={"project_id": "00000000-0000-0000-0000-000000000000"})
+    detail_response = client.get("/sessions/00000000-0000-0000-0000-000000000000")
+    analyze_response = client.post(
+        "/sessions/00000000-0000-0000-0000-000000000000/analyze",
+        json={"input_text": "test", "input_type": "text"},
+    )
+
+    assert create_response.status_code == 404
+    assert detail_response.status_code == 404
+    assert analyze_response.status_code == 404
 
 
 def test_cost_contains_optimization_summary() -> None:

@@ -7,22 +7,10 @@ from pydantic import BaseModel, Field
 from app.core.constants import CONTRACT_VERSION
 
 
-class SessionCreateRequest(BaseModel):
-    project_id: str = Field(min_length=1, max_length=100)
-
-
 class SessionCreateApiRequest(BaseModel):
     inputType: Literal["TEXT", "SKETCH", "TEXT_WITH_SKETCH"] = "TEXT"
     inputText: str | None = None
     inputImageUrl: str | None = None
-
-
-class SessionCreateResponse(BaseModel):
-    session_id: str
-    project_id: str
-    status: Literal["created"]
-    created_at: str
-    contract_version: Literal["v2"] = CONTRACT_VERSION
 
 
 class SessionCreateApiResponse(BaseModel):

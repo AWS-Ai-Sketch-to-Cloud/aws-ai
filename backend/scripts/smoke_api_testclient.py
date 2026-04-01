@@ -58,7 +58,7 @@ def run_smoke() -> None:
 
     analyze = _must(
         client.post(
-            f"/sessions/{session_id}/analyze",
+            f"/api/sessions/{session_id}/analyze",
             headers=auth_headers,
             json={
                 "input_text": (

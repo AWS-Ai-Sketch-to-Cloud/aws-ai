@@ -29,6 +29,87 @@ type GitHubRepoListResponse = {
   repos: GitHubRepoItem[];
 };
 
+type ProjectListItem = {
+  projectId: string;
+  name: string;
+  description?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ProjectListResponse = {
+  items: ProjectListItem[];
+};
+
+type SessionListItem = {
+  sessionId: string;
+  versionNo: number;
+  inputType: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SessionListResponse = {
+  items: SessionListItem[];
+};
+
+type SessionDetailResponse = {
+  sessionId: string;
+  projectId: string;
+  versionNo: number;
+  inputType: string;
+  inputText?: string | null;
+  inputImageUrl?: string | null;
+  status: string;
+  architecture?: { architectureJson?: Record<string, unknown> };
+  terraform?: { terraformCode?: string | null };
+  cost?: {
+    monthlyTotal?: number | null;
+    costBreakdownJson?: Record<string, number> | null;
+    region?: string | null;
+    currency?: string | null;
+    assumptionJson?: {
+      pricing_source?: string;
+      pricing_error?: string;
+      monthly_total_usd?: number;
+      monthly_total_krw?: number;
+    } | null;
+  };
+  error?: { code?: string | null; message?: string | null } | null;
+};
+
+type SessionCompareResponse = {
+  baseSession: {
+    sessionId: string;
+    versionNo: number;
+    status: string;
+    createdAt: string;
+  };
+  targetSession: {
+    sessionId: string;
+    versionNo: number;
+    status: string;
+    createdAt: string;
+  };
+  jsonDiff: Array<{
+    path: string;
+    changeType: "added" | "removed" | "changed";
+  }>;
+  terraformDiff: {
+    changed: boolean;
+    diff: string;
+  };
+  costDiff: {
+    changed: boolean;
+    monthlyTotal: {
+      before?: number | null;
+      after?: number | null;
+      delta?: number | null;
+    };
+  };
+};
+
 type GitHubRepoAnalyzeResponse = {
   fullName: string;
   defaultBranch: string;
@@ -235,6 +316,16 @@ export default function SketchConsole() {
     designPoints?: string[];
     whyBetter?: string[];
   } | null>(null);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [, setCurrentVersionNo] = useState<number | null>(null);
+  const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
+  const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
+  const [isLoadingSessionDetail, setIsLoadingSessionDetail] = useState(false);
+  const [compareSummary, setCompareSummary] = useState<SessionCompareResponse | null>(null);
+  const [isLoadingCompare, setIsLoadingCompare] = useState(false);
+  const [compareBaseSessionId, setCompareBaseSessionId] = useState<string | null>(null);
+  const [compareTargetSessionId, setCompareTargetSessionId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
   const [githubRepos, setGithubRepos] = useState<GitHubRepoItem[]>([]);
@@ -298,6 +389,189 @@ export default function SketchConsole() {
     return res;
   };
 
+  const applySessionDetail = (detail: SessionDetailResponse) => {
+    setCurrentProjectId(detail.projectId);
+    setCurrentSessionId(detail.sessionId);
+    setCurrentVersionNo(detail.versionNo);
+    setArchitectureJson(detail.architecture?.architectureJson ?? null);
+    setTerraformCode(detail.terraform?.terraformCode ?? null);
+    setMonthlyTotal(detail.cost?.monthlyTotal ?? null);
+    setCostBreakdown(detail.cost?.costBreakdownJson ?? null);
+    setRegion(detail.cost?.region ?? null);
+    setCurrency(detail.cost?.currency ?? null);
+    setCostAssumptions(detail.cost?.assumptionJson ?? null);
+    setGenerationStatus(detail.status === "COST_CALCULATED" ? "optimized" : "complete");
+    if (detail.error?.message) {
+      setErrorMessage(detail.error.message);
+    }
+  };
+
+  const loadProjectSessions = async (projectId: string, token: string, apiBaseUrl: string) => {
+    setIsLoadingSessionHistory(true);
+    try {
+      const res = await authFetch(`${apiBaseUrl}/api/projects/${projectId}/sessions`, token);
+      const data = (await res.json()) as SessionListResponse;
+      setSessionHistory(data.items ?? []);
+      return data.items ?? [];
+    } finally {
+      setIsLoadingSessionHistory(false);
+    }
+  };
+
+  const loadSessionDetail = async (sessionId: string, token: string, apiBaseUrl: string) => {
+    setIsLoadingSessionDetail(true);
+    try {
+      const detailRes = await authFetch(`${apiBaseUrl}/api/sessions/${sessionId}`, token);
+      const detail = (await detailRes.json()) as SessionDetailResponse;
+      applySessionDetail(detail);
+      return detail;
+    } finally {
+      setIsLoadingSessionDetail(false);
+    }
+  };
+
+  const loadCompareSummary = async (
+    sessionId: string,
+    token: string,
+    apiBaseUrl: string,
+    baseSessionId?: string,
+  ) => {
+    setIsLoadingCompare(true);
+    try {
+      const compareUrl = new URL(`${apiBaseUrl}/api/sessions/${sessionId}/compare`);
+      if (baseSessionId) {
+        compareUrl.searchParams.set("baseSessionId", baseSessionId);
+      }
+      const compareRes = await authFetch(compareUrl.toString(), token);
+      const compare = (await compareRes.json()) as SessionCompareResponse;
+      setCompareSummary(compare);
+      return compare;
+    } catch (error) {
+      setCompareSummary(null);
+      throw error;
+    } finally {
+      setIsLoadingCompare(false);
+    }
+  };
+
+  const openSessionVersion = async (sessionId: string) => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("로그인이 필요합니다.");
+      return;
+    }
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setErrorMessage(null);
+    setErrorRequestId(null);
+
+    try {
+      const detail = await loadSessionDetail(sessionId, auth.accessToken, apiBaseUrl);
+      const history = await loadProjectSessions(detail.projectId, auth.accessToken, apiBaseUrl);
+      if (history.some((item) => item.sessionId === sessionId && item.versionNo > 1)) {
+        try {
+          await loadCompareSummary(sessionId, auth.accessToken, apiBaseUrl);
+        } catch {
+          setCompareSummary(null);
+        }
+      } else {
+        setCompareSummary(null);
+      }
+    } catch (error) {
+      applyUserError("세션 상세를 불러오지 못했어요.", error);
+    }
+  };
+
+  const compareCurrentSession = async () => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("비교할 세션이 없습니다.");
+      return;
+    }
+    if (!compareBaseSessionId || !compareTargetSessionId) {
+      setErrorMessage("비교할 두 버전을 모두 선택해 주세요.");
+      return;
+    }
+    if (compareBaseSessionId === compareTargetSessionId) {
+      setErrorMessage("같은 버전끼리는 비교할 수 없습니다.");
+      return;
+    }
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setErrorMessage(null);
+    setErrorRequestId(null);
+    try {
+      await loadCompareSummary(compareTargetSessionId, auth.accessToken, apiBaseUrl, compareBaseSessionId);
+    } catch (error) {
+      applyUserError("비교 결과를 불러오지 못했어요.", error);
+    }
+  };
+
+  const findOrCreateProjectForRepoAnalysis = async (
+    fullName: string,
+    token: string,
+    apiBaseUrl: string,
+  ): Promise<{ projectId: string }> => {
+    const projectName = `repo-${fullName}`;
+    const projectListRes = await authFetch(`${apiBaseUrl}/api/projects`, token);
+    const projectList = (await projectListRes.json()) as ProjectListResponse;
+    const existing = (projectList.items ?? []).find((item) => item.name === projectName);
+    if (existing) {
+      return { projectId: existing.projectId };
+    }
+
+    const createRes = await authFetch(`${apiBaseUrl}/api/projects`, token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: projectName,
+        description: `GitHub AWS analysis history for ${fullName}`,
+      }),
+    });
+    return (await createRes.json()) as { projectId: string };
+  };
+
+  const persistRepoAnalysisAsSession = async (
+    analysis: GitHubRepoAnalyzeResponse,
+    token: string,
+    apiBaseUrl: string,
+  ) => {
+    const project = await findOrCreateProjectForRepoAnalysis(analysis.fullName, token, apiBaseUrl);
+    setCurrentProjectId(project.projectId);
+
+    const sessionRes = await authFetch(
+      `${apiBaseUrl}/api/projects/${project.projectId}/sessions`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          inputType: "TEXT",
+          inputText: `GitHub repo analysis: ${analysis.fullName}`,
+          inputImageUrl: null,
+        }),
+      },
+    );
+    const session = (await sessionRes.json()) as { sessionId: string; versionNo?: number };
+    setCurrentSessionId(session.sessionId);
+    setCurrentVersionNo(session.versionNo ?? null);
+
+    await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/architecture`, token, {
+      method: "POST",
+      body: JSON.stringify({
+        schemaVersion: "v1",
+        architectureJson: analysis.architectureJson,
+      }),
+    });
+    await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/terraform`, token, {
+      method: "POST",
+    });
+    await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/cost`, token, {
+      method: "POST",
+    });
+
+    const detail = await loadSessionDetail(session.sessionId, token, apiBaseUrl);
+    await loadProjectSessions(project.projectId, token, apiBaseUrl);
+    setCompareSummary(null);
+    return detail;
+  };
+
   const handleGenerate = async (payload: {
     description: string;
     uploadedFile: File | null;
@@ -324,6 +598,13 @@ export default function SketchConsole() {
     setAnalysisCoverage(null);
     setAnalysisUnmetHints([]);
     setAnalysisRationale(null);
+    setCurrentProjectId(null);
+    setCurrentSessionId(null);
+    setCurrentVersionNo(null);
+    setSessionHistory([]);
+    setCompareSummary(null);
+    setCompareBaseSessionId(null);
+    setCompareTargetSessionId(null);
 
     try {
       const toDataUrl = (file: File): Promise<string> =>
@@ -362,6 +643,7 @@ export default function SketchConsole() {
         }),
       });
       const project = (await projectRes.json()) as { projectId: string };
+      setCurrentProjectId(project.projectId);
 
       const inputType = payload.uploadedFile
         ? payload.description
@@ -382,8 +664,10 @@ export default function SketchConsole() {
         },
       );
       const session = (await sessionRes.json()) as { sessionId: string };
+      setCurrentSessionId(session.sessionId);
+      setCurrentVersionNo(null);
 
-      const analyzeRes = await authFetch(`${apiBaseUrl}/sessions/${session.sessionId}/analyze`, auth.accessToken, {
+      const analyzeRes = await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/analyze`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({
           input_text: payload.description?.trim()
@@ -424,24 +708,11 @@ export default function SketchConsole() {
         method: "POST",
       });
 
-      const detailRes = await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}`, auth.accessToken);
-      const detail = (await detailRes.json()) as {
-        architecture?: { architectureJson?: Record<string, unknown> };
-        terraform?: { terraformCode?: string };
-        cost?: {
-          monthlyTotal?: number;
-          costBreakdownJson?: Record<string, number>;
-          region?: string;
-          currency?: string;
-          assumptionJson?: {
-            ec2_count?: number;
-            pricing_source?: string;
-            pricing_error?: string;
-            monthly_total_usd?: number;
-            monthly_total_krw?: number;
-          };
-        };
-      };
+      const detail = await loadSessionDetail(session.sessionId, auth.accessToken, apiBaseUrl);
+      const history = await loadProjectSessions(project.projectId, auth.accessToken, apiBaseUrl);
+      setCompareTargetSessionId(session.sessionId);
+      setCompareBaseSessionId(history.find((item) => item.sessionId !== session.sessionId)?.sessionId ?? null);
+      setCompareSummary(null);
 
       console.groupCollapsed("[STC] Analysis Result");
       console.info("sessionId", session.sessionId);
@@ -452,12 +723,6 @@ export default function SketchConsole() {
       console.groupEnd();
 
       setArchitectureJson(detail.architecture?.architectureJson ?? analyze.parsed_json ?? null);
-      setTerraformCode(detail.terraform?.terraformCode ?? null);
-      setMonthlyTotal(detail.cost?.monthlyTotal ?? null);
-      setCostBreakdown(detail.cost?.costBreakdownJson ?? null);
-      setRegion(detail.cost?.region ?? null);
-      setCurrency(detail.cost?.currency ?? null);
-      setCostAssumptions(detail.cost?.assumptionJson ?? null);
       setAnalysisCoverage(
         typeof analyze.analysisMeta?.requirementCoverage === "number"
           ? analyze.analysisMeta.requirementCoverage
@@ -532,21 +797,15 @@ export default function SketchConsole() {
     setGenerationStatus("analyzing");
     setErrorMessage(null);
     setErrorRequestId(null);
+    setCompareSummary(null);
     try {
       const res = await authFetch(`${apiBaseUrl}/api/github/repo-analysis`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({ fullName: selectedRepo, forceRefresh }),
       });
       const data = (await res.json()) as GitHubRepoAnalyzeResponse;
-      const repoRegion = data.architectureJson?.["region"];
       setRepoAnalysis(data);
-      setArchitectureJson(data.architectureJson ?? null);
-      setTerraformCode(data.terraformCode ?? null);
-      setMonthlyTotal(data.cost.monthlyTotal ?? data.cost.monthly_total ?? null);
-      setCostBreakdown(data.cost.breakdown ?? null);
-      setRegion(typeof repoRegion === "string" && repoRegion ? repoRegion : "ap-northeast-2");
-      setCurrency(data.cost.currency ?? "USD");
-      setCostAssumptions((data.cost.assumptions as Record<string, unknown> | null) as typeof costAssumptions);
+      await persistRepoAnalysisAsSession(data, auth.accessToken, apiBaseUrl);
       setAnalysisCoverage(null);
       setAnalysisUnmetHints([]);
       setAnalysisRationale({
@@ -1020,6 +1279,189 @@ export default function SketchConsole() {
                     </p>
                   ) : null}
                 </details>
+              </div>
+            ) : null}
+          </div>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">세션 이력</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  현재 프로젝트의 버전 흐름을 확인하고 원하는 두 버전을 골라 비교할 수 있습니다.
+                </p>
+                {currentProjectId ? (
+                  <p className="mt-1 text-[11px] text-slate-400">projectId: {currentProjectId}</p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-slate-400">생성을 한 번 실행하면 여기서 v1, v2 이력이 보입니다.</p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void compareCurrentSession();
+                  }}
+                  disabled={
+                    !compareBaseSessionId ||
+                    !compareTargetSessionId ||
+                    isLoadingCompare ||
+                    compareBaseSessionId === compareTargetSessionId
+                  }
+                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
+                >
+                  {isLoadingCompare ? "비교 불러오는 중..." : "선택 버전끼리 비교"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-slate-500">
+              <span>
+                기준 버전:{" "}
+                <strong className="text-slate-700">
+                  {sessionHistory.find((item) => item.sessionId === compareBaseSessionId)?.versionNo
+                    ? `v${sessionHistory.find((item) => item.sessionId === compareBaseSessionId)?.versionNo}`
+                    : "-"}
+                </strong>
+              </span>
+              <span>
+                비교 버전:{" "}
+                <strong className="text-slate-700">
+                  {sessionHistory.find((item) => item.sessionId === compareTargetSessionId)?.versionNo
+                    ? `v${sessionHistory.find((item) => item.sessionId === compareTargetSessionId)?.versionNo}`
+                    : "-"}
+                </strong>
+              </span>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {isLoadingSessionHistory ? (
+                <p className="text-xs text-slate-500">세션 목록을 불러오는 중입니다.</p>
+              ) : sessionHistory.length === 0 ? (
+                <p className="text-xs text-slate-500">아직 저장된 세션 이력이 없습니다.</p>
+              ) : (
+                sessionHistory.map((item) => (
+                  <button
+                    key={item.sessionId}
+                    type="button"
+                    onClick={() => {
+                      void openSessionVersion(item.sessionId);
+                    }}
+                    disabled={isLoadingSessionDetail}
+                    className={`rounded-md border px-3 py-2 text-left text-xs transition ${
+                      currentSessionId === item.sessionId
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+                    } disabled:opacity-60`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">v{item.versionNo}</div>
+                        <div className={currentSessionId === item.sessionId ? "text-slate-200" : "text-slate-500"}>
+                          {item.status}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] ${
+                            compareBaseSessionId === item.sessionId
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-slate-100 text-slate-500"
+                          }`}
+                        >
+                          기준
+                        </span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] ${
+                            compareTargetSessionId === item.sessionId
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-slate-100 text-slate-500"
+                          }`}
+                        >
+                          비교
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex gap-1">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setCompareBaseSessionId(item.sessionId);
+                          setCompareSummary(null);
+                        }}
+                        className="rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-700 hover:bg-slate-50"
+                      >
+                        기준 선택
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setCompareTargetSessionId(item.sessionId);
+                          setCompareSummary(null);
+                        }}
+                        className="rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-700 hover:bg-slate-50"
+                      >
+                        비교 선택
+                      </button>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {compareSummary ? (
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-900">
+                  비교 요약: v{compareSummary.baseSession.versionNo} {"->"} v{compareSummary.targetSession.versionNo}
+                </p>
+                <div className="mt-2 grid gap-2 md:grid-cols-3">
+                  <div className="rounded-md border border-slate-200 bg-white p-3">
+                    <p className="text-[11px] text-slate-500">JSON 변경</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900">
+                      {compareSummary.jsonDiff.length}건
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-white p-3">
+                    <p className="text-[11px] text-slate-500">Terraform 변경</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900">
+                      {compareSummary.terraformDiff.changed ? "있음" : "없음"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-white p-3">
+                    <p className="text-[11px] text-slate-500">월 비용 차이</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900">
+                      {compareSummary.costDiff.monthlyTotal.delta ?? 0}
+                    </p>
+                  </div>
+                </div>
+                {compareSummary.jsonDiff.length > 0 ? (
+                  <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold text-slate-700">주요 JSON 변경 경로</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {compareSummary.jsonDiff.slice(0, 8).map((item) => (
+                        <span
+                          key={`${item.path}-${item.changeType}`}
+                          className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-700"
+                        >
+                          {item.changeType}: {item.path}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : compareBaseSessionId && compareTargetSessionId && compareBaseSessionId === compareTargetSessionId ? (
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+                서로 다른 두 버전을 골라 비교해 주세요.
+              </div>
+            ) : !compareBaseSessionId || !compareTargetSessionId ? (
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+                세션 카드에서 `기준 선택`, `비교 선택`을 눌러 두 버전을 고른 뒤 비교할 수 있습니다.
+              </div>
+            ) : currentSessionId && sessionHistory[0]?.sessionId === currentSessionId ? (
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+                비교 버튼을 누르면 선택한 두 버전의 차이를 요약해서 보여줍니다.
               </div>
             ) : null}
           </div>
