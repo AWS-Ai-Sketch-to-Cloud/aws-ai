@@ -55,16 +55,6 @@ def to_access_token(user_id: UUID) -> str:
     return f"{header_b64}.{payload_b64}.{_b64url_encode(signature)}"
 
 
-def _parse_legacy_uid_token(token: str) -> UUID | None:
-    if not token.startswith("uid:"):
-        return None
-    raw_user_id = token.removeprefix("uid:")
-    try:
-        return UUID(raw_user_id)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail="invalid access token") from e
-
-
 def _parse_jwt_access_token(token: str) -> UUID:
     try:
         header_b64, payload_b64, signature_b64 = token.split(".")
@@ -102,7 +92,4 @@ def user_id_from_auth_header(authorization: str | None) -> UUID:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
     token = authorization.removeprefix("Bearer ").strip()
-    legacy_user_id = _parse_legacy_uid_token(token)
-    if legacy_user_id:
-        return legacy_user_id
     return _parse_jwt_access_token(token)

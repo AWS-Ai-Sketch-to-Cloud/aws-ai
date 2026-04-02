@@ -110,3 +110,12 @@ def test_upload_requires_auth() -> None:
         files={"file": ("diagram.png", b"\x89PNG\r\n\x1a\nmock", "image/png")},
     )
     assert response.status_code == 401
+
+
+def test_legacy_uid_token_is_rejected() -> None:
+    client = TestClient(app)
+    response = client.get(
+        "/api/users/me",
+        headers={"Authorization": "Bearer uid:00000000-0000-0000-0000-000000000001"},
+    )
+    assert response.status_code == 401
