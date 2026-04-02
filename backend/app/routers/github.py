@@ -78,23 +78,25 @@ CONFIDENCE_RETRY_THRESHOLD = float(os.getenv("GITHUB_ANALYSIS_RETRY_THRESHOLD", 
 REPO_ANALYSIS_AI_ONLY = os.getenv("GITHUB_REPO_ANALYSIS_AI_ONLY", "true").lower() == "true"
 
 
-def _github_request(path: str, *, access_token: str) -> dict | list:
+def _github_request(path: str, *, access_token: str | None = None) -> dict | list:
     url = f"https://api.github.com{path}"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Sketch-to-Cloud",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
     req = urllib.request.Request(
         url=url,
         method="GET",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {access_token}",
-            "User-Agent": "Sketch-to-Cloud",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as response:
             body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
-        if exc.code in {401, 403}:
+        if exc.code in {401, 403} and access_token:
             raise HTTPException(
                 status_code=401,
                 detail="GitHub 토큰이 만료되었거나 권한이 부족합니다. GitHub로 다시 로그인해 주세요.",
@@ -653,7 +655,7 @@ def analyze_github_repo(
     current_user: User = Depends(get_current_user),
 ) -> GitHubRepoAnalyzeResponse:
     _ensure_repo_analysis_ai_ready()
-    token = _require_github_token(db, current_user)
+    token = get_github_access_token(db, current_user.id)
     full_name = _validate_repo_full_name(payload.fullName)
     encoded_full_name = urllib.parse.quote(full_name, safe="/")
 

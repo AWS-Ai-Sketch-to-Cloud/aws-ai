@@ -3,12 +3,16 @@ import PageMeta from "../../components/common/PageMeta";
 import { Header } from "../../components/dashboard/header";
 import { ControlPanel } from "../../components/dashboard/control-panel";
 import { ResultPanel } from "../../components/dashboard/result-panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { useEffect } from "react";
 
 type AuthSession = {
   accessToken: string;
   refreshToken: string;
   apiBaseUrl?: string;
 };
+
+type RepoImportTab = "my-repos" | "repo-url";
 
 type ApiErrorPayload = {
   detail?: string;
@@ -261,6 +265,24 @@ const previewValue = (value: unknown): string => {
   }
 };
 
+const parseGitHubRepoInput = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const normalized = trimmed.replace(/\.git$/i, "").replace(/\/+$/, "");
+  const urlMatch = normalized.match(/github\.com\/([^/\s]+)\/([^/\s]+)/i);
+  if (urlMatch) {
+    return `${urlMatch[1]}/${urlMatch[2]}`;
+  }
+
+  const fullNameMatch = normalized.match(/^([^/\s]+)\/([^/\s]+)$/);
+  if (fullNameMatch) {
+    return `${fullNameMatch[1]}/${fullNameMatch[2]}`;
+  }
+
+  return null;
+};
+
 const buildRepoReportMarkdown = (analysis: GitHubRepoAnalyzeResponse): string => {
   const lines: string[] = [];
   lines.push(`# AWS 분석 리포트 - ${analysis.fullName}`);
@@ -370,6 +392,8 @@ export default function SketchConsole() {
   const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
   const [githubRepos, setGithubRepos] = useState<GitHubRepoItem[]>([]);
   const [selectedRepo, setSelectedRepo] = useState<string>("");
+  const [repoImportTab, setRepoImportTab] = useState<RepoImportTab>("repo-url");
+  const [repoUrlInput, setRepoUrlInput] = useState("");
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
   const [isAnalyzingRepo, setIsAnalyzingRepo] = useState(false);
   const [repoAnalysis, setRepoAnalysis] = useState<GitHubRepoAnalyzeResponse | null>(null);
@@ -381,6 +405,9 @@ export default function SketchConsole() {
   const [isLoadingGitHubStatus, setIsLoadingGitHubStatus] = useState(false);
   const [readiness, setReadiness] = useState<RepoReadiness | null>(null);
   const [isLoadingReadiness, setIsLoadingReadiness] = useState(false);
+  const hasGitHubRepoAccess = Boolean(
+    githubStatus?.tokenPresent && githubStatus?.tokenValid && githubStatus?.githubApiReachable,
+  );
 
   const getAuth = (): AuthSession | null => {
     try {
@@ -875,14 +902,10 @@ export default function SketchConsole() {
     }
   };
 
-  const analyzeSelectedGitHubRepo = async (forceRefresh = false) => {
+  const analyzeGitHubRepo = async (fullName: string, forceRefresh = false) => {
     const auth = getAuth();
     if (!auth?.accessToken) {
       setErrorMessage("로그인이 필요합니다.");
-      return;
-    }
-    if (!selectedRepo) {
-      setErrorMessage("분석할 GitHub 레포를 선택해 주세요.");
       return;
     }
 
@@ -895,7 +918,7 @@ export default function SketchConsole() {
     try {
       const res = await authFetch(`${apiBaseUrl}/api/github/repo-analysis`, auth.accessToken, {
         method: "POST",
-        body: JSON.stringify({ fullName: selectedRepo, forceRefresh }),
+        body: JSON.stringify({ fullName, forceRefresh }),
       });
       const data = (await res.json()) as GitHubRepoAnalyzeResponse;
       setRepoAnalysis(data);
@@ -924,6 +947,25 @@ export default function SketchConsole() {
     } finally {
       setIsAnalyzingRepo(false);
     }
+  };
+
+  const analyzeSelectedGitHubRepo = async (forceRefresh = false) => {
+    if (!selectedRepo) {
+      setErrorMessage("분석할 GitHub 레포를 선택해 주세요.");
+      return;
+    }
+    await analyzeGitHubRepo(selectedRepo, forceRefresh);
+  };
+
+  const analyzeRepoFromUrl = async (forceRefresh = false) => {
+    const fullName = parseGitHubRepoInput(repoUrlInput);
+    if (!fullName) {
+      setErrorMessage("GitHub 저장소 주소 또는 owner/repo 형식을 입력해 주세요.");
+      return;
+    }
+
+    setRepoUrlInput(`https://github.com/${fullName}`);
+    await analyzeGitHubRepo(fullName, forceRefresh);
   };
 
   const loadGitHubConnectionStatus = async () => {
@@ -960,6 +1002,16 @@ export default function SketchConsole() {
       setIsLoadingReadiness(false);
     }
   };
+
+  useEffect(() => {
+    void loadGitHubConnectionStatus();
+  }, []);
+
+  useEffect(() => {
+    if (hasGitHubRepoAccess && !selectedRepo && !repoUrlInput.trim()) {
+      setRepoImportTab("my-repos");
+    }
+  }, [hasGitHubRepoAccess, repoUrlInput, selectedRepo]);
 
   const loadRepoAnalysisFeedback = async (fullName: string) => {
     const auth = getAuth();
@@ -1114,47 +1166,112 @@ export default function SketchConsole() {
             </div>
           ) : null}
           <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <button
-                type="button"
-                onClick={loadGitHubRepos}
-                disabled={isLoadingRepos}
-                className="h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {isLoadingRepos ? "레포 불러오는 중..." : "GitHub 레포 불러오기"}
-              </button>
-              <select
-                value={selectedRepo}
-                onChange={(event) => setSelectedRepo(event.target.value)}
-                className="h-10 min-w-[260px] rounded-md border border-slate-300 bg-white px-3 text-sm"
-                disabled={githubRepos.length === 0}
-              >
-                {githubRepos.length === 0 ? (
-                  <option value="">레포를 먼저 불러와 주세요</option>
+            <Tabs
+              value={repoImportTab}
+              onValueChange={(value) => setRepoImportTab(value as RepoImportTab)}
+              className="gap-4"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">레포지토리 가져오기</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    GitHub 계정이면 내 저장소와 주소 입력을 모두 사용할 수 있고, 그 외 계정은 주소 입력으로
+                    공개 저장소를 불러올 수 있어요.
+                  </p>
+                </div>
+                <TabsList className="grid w-full max-w-md grid-cols-2">
+                  <TabsTrigger value="my-repos">내 GitHub 저장소</TabsTrigger>
+                  <TabsTrigger value="repo-url">저장소 주소 입력</TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="my-repos">
+                {hasGitHubRepoAccess ? (
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                    <button
+                      type="button"
+                      onClick={loadGitHubRepos}
+                      disabled={isLoadingRepos}
+                      className="h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                      {isLoadingRepos ? "레포 불러오는 중..." : "내 GitHub 레포 불러오기"}
+                    </button>
+                    <select
+                      value={selectedRepo}
+                      onChange={(event) => setSelectedRepo(event.target.value)}
+                      className="h-10 min-w-[260px] rounded-md border border-slate-300 bg-white px-3 text-sm"
+                      disabled={githubRepos.length === 0}
+                    >
+                      {githubRepos.length === 0 ? (
+                        <option value="">레포를 먼저 불러와 주세요</option>
+                      ) : (
+                        githubRepos.map((repo) => (
+                          <option key={repo.fullName} value={repo.fullName}>
+                            {repo.fullName}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => analyzeSelectedGitHubRepo(false)}
+                      disabled={isAnalyzingRepo || !selectedRepo}
+                      className="h-10 rounded-md bg-[#FF9900] px-4 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                      {isAnalyzingRepo ? "AWS 분석 중..." : "선택 레포 AWS 분석"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => analyzeSelectedGitHubRepo(true)}
+                      disabled={isAnalyzingRepo || !selectedRepo}
+                      className="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 disabled:opacity-60"
+                    >
+                      캐시 무시 재분석
+                    </button>
+                  </div>
                 ) : (
-                  githubRepos.map((repo) => (
-                    <option key={repo.fullName} value={repo.fullName}>
-                      {repo.fullName}
-                    </option>
-                  ))
+                  <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-5">
+                    <p className="text-sm font-semibold text-slate-900">GitHub 계정 연결 시 사용 가능</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      GitHub 계정으로 로그인하면 내 저장소 목록을 바로 불러올 수 있어요. 지금은 아래
+                      `저장소 주소 입력` 탭에서 공개 저장소 주소를 직접 입력해 사용할 수 있습니다.
+                    </p>
+                  </div>
                 )}
-              </select>
-              <button
-                type="button"
-                onClick={() => analyzeSelectedGitHubRepo(false)}
-                disabled={isAnalyzingRepo || !selectedRepo}
-                className="h-10 rounded-md bg-[#FF9900] px-4 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {isAnalyzingRepo ? "AWS 분석 중..." : "선택 레포 AWS 분석"}
-              </button>
-              <button
-                type="button"
-                onClick={() => analyzeSelectedGitHubRepo(true)}
-                disabled={isAnalyzingRepo || !selectedRepo}
-                className="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 disabled:opacity-60"
-              >
-                캐시 무시 재분석
-              </button>
+              </TabsContent>
+
+              <TabsContent value="repo-url">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                  <input
+                    type="text"
+                    value={repoUrlInput}
+                    onChange={(event) => setRepoUrlInput(event.target.value)}
+                    placeholder="https://github.com/owner/repository 또는 owner/repository"
+                    className="h-10 min-w-[280px] flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => analyzeRepoFromUrl(false)}
+                    disabled={isAnalyzingRepo || !repoUrlInput.trim()}
+                    className="h-10 rounded-md bg-[#FF9900] px-4 text-sm font-medium text-white disabled:opacity-60"
+                  >
+                    {isAnalyzingRepo ? "AWS 분석 중..." : "주소로 AWS 분석"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => analyzeRepoFromUrl(true)}
+                    disabled={isAnalyzingRepo || !repoUrlInput.trim()}
+                    className="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 disabled:opacity-60"
+                  >
+                    캐시 무시 재분석
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  GitHub 계정이 아니어도 공개 저장소 주소를 입력해 불러올 수 있어요.
+                </p>
+              </TabsContent>
+            </Tabs>
+            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center">
               <button
                 type="button"
                 onClick={loadRepoAnalysisHealth}
