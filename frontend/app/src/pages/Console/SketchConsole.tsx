@@ -95,6 +95,8 @@ type SessionCompareResponse = {
   jsonDiff: Array<{
     path: string;
     changeType: "added" | "removed" | "changed";
+    before?: unknown;
+    after?: unknown;
   }>;
   terraformDiff: {
     changed: boolean;
@@ -107,6 +109,20 @@ type SessionCompareResponse = {
       after?: number | null;
       delta?: number | null;
     };
+    breakdown?: Record<
+      string,
+      {
+        before?: number | null;
+        after?: number | null;
+        delta?: number | null;
+      }
+    >;
+    assumptionsChanged?: Array<{
+      path: string;
+      changeType: "added" | "removed" | "changed";
+      before?: unknown;
+      after?: unknown;
+    }>;
   };
 };
 
@@ -223,6 +239,28 @@ const simplifyAwsWords = (text: string): string => {
   return out;
 };
 
+const formatCurrencyDelta = (value?: number | null): string => {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+const previewValue = (value: unknown): string => {
+  if (value === null) return "null";
+  if (value === undefined) return "-";
+  if (typeof value === "string") return value;
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized.length > 160 ? `${serialized.slice(0, 157)}...` : serialized;
+  } catch {
+    return String(value);
+  }
+};
+
 const buildRepoReportMarkdown = (analysis: GitHubRepoAnalyzeResponse): string => {
   const lines: string[] = [];
   lines.push(`# AWS 분석 리포트 - ${analysis.fullName}`);
@@ -319,6 +357,8 @@ export default function SketchConsole() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [, setCurrentVersionNo] = useState<number | null>(null);
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
   const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
   const [isLoadingSessionDetail, setIsLoadingSessionDetail] = useState(false);
@@ -418,6 +458,18 @@ export default function SketchConsole() {
     }
   };
 
+  const loadProjects = async (token: string, apiBaseUrl: string) => {
+    setIsLoadingProjects(true);
+    try {
+      const res = await authFetch(`${apiBaseUrl}/api/projects`, token);
+      const data = (await res.json()) as ProjectListResponse;
+      setProjects(data.items ?? []);
+      return data.items ?? [];
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
+
   const loadSessionDetail = async (sessionId: string, token: string, apiBaseUrl: string) => {
     setIsLoadingSessionDetail(true);
     try {
@@ -481,6 +533,46 @@ export default function SketchConsole() {
     }
   };
 
+  const openProjectHistory = async (projectId: string) => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("로그인이 필요합니다.");
+      return;
+    }
+
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setErrorMessage(null);
+    setErrorRequestId(null);
+    setCurrentProjectId(projectId);
+    setCompareSummary(null);
+
+    try {
+      const history = await loadProjectSessions(projectId, auth.accessToken, apiBaseUrl);
+      if (history.length === 0) {
+        setCurrentSessionId(null);
+        setCurrentVersionNo(null);
+        setArchitectureJson(null);
+        setTerraformCode(null);
+        setMonthlyTotal(null);
+        setCostBreakdown(null);
+        setRegion(null);
+        setCurrency(null);
+        setCostAssumptions(null);
+        setGenerationStatus("idle");
+        setCompareBaseSessionId(null);
+        setCompareTargetSessionId(null);
+        return;
+      }
+
+      const latest = history[0];
+      await loadSessionDetail(latest.sessionId, auth.accessToken, apiBaseUrl);
+      setCompareTargetSessionId(latest.sessionId);
+      setCompareBaseSessionId(history[1]?.sessionId ?? null);
+    } catch (error) {
+      applyUserError("프로젝트 이력을 불러오지 못했어요.", error);
+    }
+  };
+
   const compareCurrentSession = async () => {
     const auth = getAuth();
     if (!auth?.accessToken) {
@@ -535,6 +627,7 @@ export default function SketchConsole() {
   ) => {
     const project = await findOrCreateProjectForRepoAnalysis(analysis.fullName, token, apiBaseUrl);
     setCurrentProjectId(project.projectId);
+    await loadProjects(token, apiBaseUrl);
 
     const sessionRes = await authFetch(
       `${apiBaseUrl}/api/projects/${project.projectId}/sessions`,
@@ -644,6 +737,7 @@ export default function SketchConsole() {
       });
       const project = (await projectRes.json()) as { projectId: string };
       setCurrentProjectId(project.projectId);
+      await loadProjects(auth.accessToken, apiBaseUrl);
 
       const inputType = payload.uploadedFile
         ? payload.description
@@ -1285,6 +1379,72 @@ export default function SketchConsole() {
           <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
+                <p className="text-sm font-semibold text-slate-900">프로젝트 탐색</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  이전에 생성한 프로젝트를 다시 열고 그 안의 세션 버전 이력을 이어서 확인할 수 있습니다.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const auth = getAuth();
+                    if (!auth?.accessToken) {
+                      setErrorMessage("로그인이 필요합니다.");
+                      return;
+                    }
+                    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+                    setErrorMessage(null);
+                    setErrorRequestId(null);
+                    try {
+                      await loadProjects(auth.accessToken, apiBaseUrl);
+                    } catch (error) {
+                      applyUserError("프로젝트 목록을 불러오지 못했어요.", error);
+                    }
+                  }}
+                  disabled={isLoadingProjects}
+                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
+                >
+                  {isLoadingProjects ? "프로젝트 불러오는 중..." : "프로젝트 목록 새로고침"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {projects.length === 0 ? (
+                <p className="text-xs text-slate-500">
+                  아직 불러온 프로젝트가 없습니다. 위 버튼을 눌러 기존 프로젝트 목록을 가져와 보세요.
+                </p>
+              ) : (
+                projects.map((project) => (
+                  <button
+                    key={project.projectId}
+                    type="button"
+                    onClick={() => {
+                      void openProjectHistory(project.projectId);
+                    }}
+                    className={`rounded-md border px-3 py-2 text-left text-xs transition ${
+                      currentProjectId === project.projectId
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="font-semibold">{project.name}</div>
+                    <div className={currentProjectId === project.projectId ? "text-slate-200" : "text-slate-500"}>
+                      {project.description || "설명 없음"}
+                    </div>
+                    <div className={currentProjectId === project.projectId ? "mt-1 text-[10px] text-slate-300" : "mt-1 text-[10px] text-slate-400"}>
+                      updated {project.updatedAt.slice(0, 10)}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
                 <p className="text-sm font-semibold text-slate-900">세션 이력</p>
                 <p className="mt-1 text-xs text-slate-500">
                   현재 프로젝트의 버전 흐름을 확인하고 원하는 두 버전을 골라 비교할 수 있습니다.
@@ -1431,25 +1591,145 @@ export default function SketchConsole() {
                   <div className="rounded-md border border-slate-200 bg-white p-3">
                     <p className="text-[11px] text-slate-500">월 비용 차이</p>
                     <p className="mt-1 text-lg font-semibold text-slate-900">
-                      {compareSummary.costDiff.monthlyTotal.delta ?? 0}
+                      {formatCurrencyDelta(compareSummary.costDiff.monthlyTotal.delta)}
                     </p>
                   </div>
                 </div>
-                {compareSummary.jsonDiff.length > 0 ? (
-                  <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
-                    <p className="text-xs font-semibold text-slate-700">주요 JSON 변경 경로</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {compareSummary.jsonDiff.slice(0, 8).map((item) => (
-                        <span
-                          key={`${item.path}-${item.changeType}`}
-                          className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-700"
-                        >
-                          {item.changeType}: {item.path}
+                <div className="mt-3 grid gap-3 xl:grid-cols-[1.2fr_1fr]">
+                  <div className="rounded-md border border-slate-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold text-slate-700">JSON diff 상세</p>
+                      <span className="text-[11px] text-slate-500">
+                        {compareSummary.jsonDiff.length}개 변경
+                      </span>
+                    </div>
+                    {compareSummary.jsonDiff.length === 0 ? (
+                      <p className="mt-2 text-xs text-slate-500">아키텍처 JSON 변경이 없습니다.</p>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {compareSummary.jsonDiff.map((item) => (
+                          <div
+                            key={`${item.path}-${item.changeType}`}
+                            className="rounded-md border border-slate-200 bg-slate-50 p-2"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] text-white">
+                                {item.changeType}
+                              </span>
+                              <code className="text-[11px] text-slate-700">{item.path}</code>
+                            </div>
+                            <div className="mt-2 grid gap-2 md:grid-cols-2">
+                              <div className="rounded border border-slate-200 bg-white p-2">
+                                <p className="text-[10px] font-semibold text-slate-500">기준 버전</p>
+                                <p className="mt-1 break-all text-[11px] text-slate-700">
+                                  {previewValue(item.before)}
+                                </p>
+                              </div>
+                              <div className="rounded border border-slate-200 bg-white p-2">
+                                <p className="text-[10px] font-semibold text-slate-500">비교 버전</p>
+                                <p className="mt-1 break-all text-[11px] text-slate-700">
+                                  {previewValue(item.after)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded-md border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold text-slate-700">Terraform diff</p>
+                        <span className="text-[11px] text-slate-500">
+                          {compareSummary.terraformDiff.changed ? "변경 있음" : "변경 없음"}
                         </span>
-                      ))}
+                      </div>
+                      {compareSummary.terraformDiff.diff ? (
+                        <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-slate-950 p-3 text-[11px] text-slate-100">
+                          <code>{compareSummary.terraformDiff.diff}</code>
+                        </pre>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500">Terraform 코드 차이가 없습니다.</p>
+                      )}
+                    </div>
+
+                    <div className="rounded-md border border-slate-200 bg-white p-3">
+                      <p className="text-xs font-semibold text-slate-700">비용 비교 상세</p>
+                      <div className="mt-2 grid gap-2 md:grid-cols-3">
+                        <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                          <p className="text-[10px] font-semibold text-slate-500">기준 월 비용</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">
+                            {formatCurrencyDelta(compareSummary.costDiff.monthlyTotal.before)}
+                          </p>
+                        </div>
+                        <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                          <p className="text-[10px] font-semibold text-slate-500">비교 월 비용</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">
+                            {formatCurrencyDelta(compareSummary.costDiff.monthlyTotal.after)}
+                          </p>
+                        </div>
+                        <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                          <p className="text-[10px] font-semibold text-slate-500">증감</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">
+                            {formatCurrencyDelta(compareSummary.costDiff.monthlyTotal.delta)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {compareSummary.costDiff.breakdown &&
+                      Object.keys(compareSummary.costDiff.breakdown).length > 0 ? (
+                        <div className="mt-3 overflow-x-auto">
+                          <table className="min-w-full text-left text-[11px] text-slate-700">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-500">
+                                <th className="py-2 pr-3 font-semibold">항목</th>
+                                <th className="py-2 pr-3 font-semibold">기준</th>
+                                <th className="py-2 pr-3 font-semibold">비교</th>
+                                <th className="py-2 font-semibold">증감</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries(compareSummary.costDiff.breakdown).map(([key, delta]) => (
+                                <tr key={key} className="border-b border-slate-100">
+                                  <td className="py-2 pr-3 font-medium text-slate-800">{key}</td>
+                                  <td className="py-2 pr-3">{formatCurrencyDelta(delta.before)}</td>
+                                  <td className="py-2 pr-3">{formatCurrencyDelta(delta.after)}</td>
+                                  <td className="py-2">{formatCurrencyDelta(delta.delta)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-xs text-slate-500">비용 breakdown 변경 정보가 없습니다.</p>
+                      )}
+
+                      {compareSummary.costDiff.assumptionsChanged &&
+                      compareSummary.costDiff.assumptionsChanged.length > 0 ? (
+                        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold text-slate-700">비용 가정 변경</p>
+                          <div className="mt-2 space-y-2">
+                            {compareSummary.costDiff.assumptionsChanged.map((item) => (
+                              <div key={`${item.path}-${item.changeType}`} className="rounded bg-white p-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
+                                    {item.changeType}
+                                  </span>
+                                  <code className="text-[11px] text-slate-700">{item.path}</code>
+                                </div>
+                                <p className="mt-1 text-[11px] text-slate-600">
+                                  {previewValue(item.before)} {"->"} {previewValue(item.after)}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                ) : null}
+                </div>
               </div>
             ) : compareBaseSessionId && compareTargetSessionId && compareBaseSessionId === compareTargetSessionId ? (
               <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">

@@ -5,4 +5,5 @@ SQLAlchemy==2.0.43
 psycopg[binary]==3.2.10
 boto3==1.40.13
 pytest==8.4.2
+httpx==0.28.1
 alembic==1.16.5
