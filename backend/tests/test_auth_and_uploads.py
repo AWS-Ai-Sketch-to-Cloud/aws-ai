@@ -119,3 +119,34 @@ def test_legacy_uid_token_is_rejected() -> None:
         headers={"Authorization": "Bearer uid:00000000-0000-0000-0000-000000000001"},
     )
     assert response.status_code == 401
+
+
+def test_aws_deploy_config_roundtrip() -> None:
+    client = TestClient(app)
+    headers = _create_auth_headers(client)
+
+    empty_res = client.get("/api/users/aws-deploy-config", headers=headers)
+    assert empty_res.status_code == 200
+    assert empty_res.json()["configured"] is False
+
+    put_res = client.put(
+        "/api/users/aws-deploy-config",
+        headers=headers,
+        json={
+            "roleArn": "arn:aws:iam::123456789012:role/stc-deploy-role",
+            "roleExternalId": "stc-external",
+            "roleSessionName": "stc-user-session",
+        },
+    )
+    if put_res.status_code == 503:
+        assert "alembic upgrade head" in put_res.json().get("detail", "")
+        return
+    assert put_res.status_code == 200
+    assert put_res.json()["configured"] is True
+    assert put_res.json()["roleArn"] == "arn:aws:iam::123456789012:role/stc-deploy-role"
+
+    get_res = client.get("/api/users/aws-deploy-config", headers=headers)
+    assert get_res.status_code == 200
+    body = get_res.json()
+    assert body["configured"] is True
+    assert body["roleArn"] == "arn:aws:iam::123456789012:role/stc-deploy-role"

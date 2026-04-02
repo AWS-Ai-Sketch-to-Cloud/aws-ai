@@ -80,3 +80,17 @@ class MeResponse(BaseModel):
     role: str
     lastLoginAt: str | None = None
     contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class AwsDeployConfigRequest(BaseModel):
+    roleArn: str = Field(min_length=20, max_length=500)
+    roleExternalId: str | None = Field(default=None, min_length=2, max_length=200)
+    roleSessionName: str | None = Field(default=None, min_length=2, max_length=64)
+
+
+class AwsDeployConfigResponse(BaseModel):
+    configured: bool
+    roleArn: str | None = None
+    roleExternalId: str | None = None
+    roleSessionName: str | None = None
+    contractVersion: Literal["v2"] = CONTRACT_VERSION

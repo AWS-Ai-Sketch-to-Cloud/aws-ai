@@ -135,6 +135,24 @@ CREATE TABLE IF NOT EXISTS session_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_session_events_session_id ON session_events(session_id);
+
+-- Deployment execution history per session
+CREATE TABLE IF NOT EXISTS session_deployments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    action VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    region VARCHAR(30) NOT NULL DEFAULT 'ap-northeast-2',
+    log_text TEXT,
+    applied_resources_json JSONB,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_deployments_session_id ON session_deployments(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_deployments_created_at ON session_deployments(created_at);
 CREATE INDEX IF NOT EXISTS idx_session_events_event_type ON session_events(event_type);
 
 COMMIT;

@@ -1,24 +1,45 @@
 ﻿from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import json
+import os
+from datetime import datetime, timezone
+from uuid import UUID
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from jsonschema import ValidationError, validate
 from sqlalchemy import select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.ai_parser import AIParseError, parse_architecture_with_retry
+import app.database as database_module
 from app.core.constants import ARCH_SCHEMA, CONTRACT_VERSION, dt_to_iso
 from app.core.deps import get_current_user
 from app.cost_calculator import estimate_monthly_cost
 from app.database import get_db
-from app.models import AppSession, Project, SessionArchitecture, SessionCostResult, SessionTerraformResult, User
+from app.models import (
+    AppSession,
+    Project,
+    SessionArchitecture,
+    SessionCostResult,
+    SessionDeployment,
+    SessionTerraformResult,
+    User,
+    UserDeployConfig,
+)
 from app.schemas.session import (
     AnalysisMeta,
     AnalyzeRequest,
     AnalyzeResponse,
     ArchitectureSaveRequest,
     CostCalculateResponse,
+    DeployRequest,
+    DestroyRequest,
     ErrorPayload,
     SessionCompareResponse,
+    SessionDeploymentItem,
+    SessionDeploymentListResponse,
+    SessionDeploymentResponse,
     SessionDetailArchitecture,
     SessionDetailCost,
     SessionDetailError,
@@ -29,6 +50,7 @@ from app.schemas.session import (
     SessionStatusPatchResponse,
     TerraformGenerateResponse,
 )
+from app.services.deployment_service import resolve_credentials, run_deploy, run_destroy
 from app.services.compare_service import (
     build_cost_diff,
     build_session_summary,
@@ -46,6 +68,153 @@ from app.terraform_generator import generate_terraform_from_architecture
 from app.terraform_validator import validate_terraform_code
 
 router = APIRouter()
+
+
+def _to_deployment_item(deployment: SessionDeployment) -> SessionDeploymentItem:
+    return SessionDeploymentItem(
+        deploymentId=str(deployment.id),
+        action=deployment.action,
+        status=deployment.status,
+        region=deployment.region,
+        startedAt=dt_to_iso(deployment.started_at) if deployment.started_at else None,
+        completedAt=dt_to_iso(deployment.completed_at) if deployment.completed_at else None,
+        createdAt=dt_to_iso(deployment.created_at),
+        log=deployment.log_text,
+        appliedResources=deployment.applied_resources_json,
+    )
+
+
+def _build_destroy_confirmation_code(session_id: str) -> str:
+    normalized = session_id.replace("-", "")
+    return f"DESTROY-{normalized[-6:].upper()}"
+
+
+def _resolve_user_assume_role(db: Session, user: User) -> tuple[str | None, str | None, str | None]:
+    role_arn: str | None = None
+    role_external_id: str | None = None
+    role_session_name: str | None = None
+
+    try:
+        user_config = db.scalars(select(UserDeployConfig).where(UserDeployConfig.user_id == user.id).limit(1)).first()
+    except ProgrammingError:
+        db.rollback()
+        user_config = None
+    if user_config:
+        role_arn = user_config.role_arn
+        role_external_id = user_config.role_external_id
+        role_session_name = user_config.role_session_name
+        return role_arn, role_external_id, role_session_name or f"stc-{str(user.id).replace('-', '')[:12]}"
+
+    raw_map = os.getenv("DEPLOY_USER_ROLE_MAP", "").strip()
+    if raw_map:
+        try:
+            mapping = json.loads(raw_map)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=500, detail=f"DEPLOY_USER_ROLE_MAP is not valid JSON: {e.msg}") from e
+        if isinstance(mapping, dict):
+            for lookup_key in (str(user.id), user.login_id, user.email):
+                candidate = mapping.get(lookup_key)
+                if candidate is None:
+                    continue
+                if isinstance(candidate, str):
+                    role_arn = candidate.strip() or None
+                elif isinstance(candidate, dict):
+                    role_arn = str(candidate.get("roleArn", "")).strip() or None
+                    role_external_id = str(candidate.get("roleExternalId", "")).strip() or None
+                    role_session_name = str(candidate.get("roleSessionName", "")).strip() or None
+                break
+
+    if not role_arn:
+        role_arn = os.getenv("DEPLOY_ASSUME_ROLE_ARN", "").strip() or None
+        role_external_id = os.getenv("DEPLOY_ASSUME_ROLE_EXTERNAL_ID", "").strip() or None
+        role_session_name = os.getenv("DEPLOY_ASSUME_ROLE_SESSION_NAME", "").strip() or None
+
+    if role_session_name is None:
+        role_session_name = f"stc-{str(user.id).replace('-', '')[:12]}"
+
+    return role_arn, role_external_id, role_session_name
+
+
+def _execute_deployment_job(
+    *,
+    deployment_id: str,
+    session_id: str,
+    action: str,
+    terraform_code: str,
+    auth_mode: str,
+    access_key_id: str | None,
+    secret_access_key: str | None,
+    session_token: str | None,
+    role_arn: str | None,
+    role_external_id: str | None,
+    role_session_name: str | None,
+    region: str,
+    simulate: bool,
+) -> None:
+    database_module._ensure_engine()
+    if database_module.SessionLocal is None:
+        raise RuntimeError("database session factory is not initialized")
+    db = database_module.SessionLocal()
+    try:
+        deployment_row = db.get(SessionDeployment, UUID(deployment_id))
+        session = get_session_or_404(db, session_id)
+        if not deployment_row:
+            return
+        deployment_row.status = "RUNNING"
+        deployment_row.started_at = datetime.now(timezone.utc)
+        deployment_row.log_text = f"[{action.lower()}] running"
+        db.commit()
+
+        credentials = resolve_credentials(
+            auth_mode=auth_mode,
+            access_key_id=access_key_id,
+            secret_access_key=secret_access_key,
+            session_token=session_token,
+            role_arn=role_arn,
+            role_external_id=role_external_id,
+            role_session_name=role_session_name,
+            region=region,
+            simulate=simulate,
+        )
+        if action == "DEPLOY":
+            result = run_deploy(terraform_code=terraform_code, credentials=credentials, region=region, simulate=simulate)
+            event_ok = "DEPLOY_SUCCEEDED"
+            event_fail = "DEPLOY_FAILED"
+        else:
+            result = run_destroy(terraform_code=terraform_code, credentials=credentials, region=region, simulate=simulate)
+            event_ok = "DESTROY_SUCCEEDED"
+            event_fail = "DESTROY_FAILED"
+
+        deployment_row.status = result.status
+        deployment_row.log_text = result.log
+        deployment_row.applied_resources_json = result.resources
+        deployment_row.completed_at = datetime.now(timezone.utc)
+        deployment_row.updated_at = datetime.now(timezone.utc)
+        record_session_event(
+            db,
+            session,
+            event_ok if result.status == "SUCCEEDED" else event_fail,
+            {"deploymentId": str(deployment_row.id), "region": region},
+        )
+        db.commit()
+    except Exception as e:  # noqa: BLE001
+        deployment_row = db.get(SessionDeployment, UUID(deployment_id))
+        session = db.get(AppSession, UUID(session_id))
+        if deployment_row:
+            deployment_row.status = "FAILED"
+            deployment_row.log_text = f"[{action.lower()}] failed\n{e}"
+            deployment_row.completed_at = datetime.now(timezone.utc)
+            deployment_row.updated_at = datetime.now(timezone.utc)
+            if session:
+                record_session_event(
+                    db,
+                    session,
+                    "DEPLOY_FAILED" if action == "DEPLOY" else "DESTROY_FAILED",
+                    {"deploymentId": str(deployment_row.id), "error": str(e), "region": region},
+                )
+            db.commit()
+    finally:
+        db.close()
 
 
 def _analyze_session_impl(
@@ -398,3 +567,135 @@ def analyze_session_api(
     current_user: User = Depends(get_current_user),
 ) -> AnalyzeResponse:
     return _analyze_session_impl(session_id, payload, db, current_user)
+
+
+@router.post("/api/sessions/{session_id}/deploy", response_model=SessionDeploymentResponse)
+def deploy_session(
+    session_id: str,
+    payload: DeployRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionDeploymentResponse:
+    session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
+    terraform_result = db.scalars(
+        select(SessionTerraformResult).where(SessionTerraformResult.session_id == session.id).limit(1)
+    ).first()
+    if not terraform_result or not terraform_result.terraform_code:
+        raise HTTPException(status_code=409, detail="terraform result not found for this session")
+
+    region = payload.awsRegion or "ap-northeast-2"
+    role_arn, role_external_id, role_session_name = _resolve_user_assume_role(db, current_user)
+    if not payload.simulate and not role_arn:
+        raise HTTPException(
+            status_code=400,
+            detail="deploy role is not configured for this user. configure DEPLOY_USER_ROLE_MAP or DEPLOY_ASSUME_ROLE_ARN",
+        )
+    deployment = SessionDeployment(
+        session_id=session.id,
+        action="DEPLOY",
+        status="PENDING",
+        region=region,
+        log_text="[deployment] queued",
+    )
+    db.add(deployment)
+    db.commit()
+    db.refresh(deployment)
+
+    background_tasks.add_task(
+        _execute_deployment_job,
+        deployment_id=str(deployment.id),
+        session_id=str(session.id),
+        action="DEPLOY",
+        terraform_code=terraform_result.terraform_code,
+        auth_mode="ASSUME_ROLE",
+        access_key_id=None,
+        secret_access_key=None,
+        session_token=None,
+        role_arn=role_arn,
+        role_external_id=role_external_id,
+        role_session_name=role_session_name,
+        region=region,
+        simulate=payload.simulate,
+    )
+    record_session_event(db, session, "DEPLOY_QUEUED", {"deploymentId": str(deployment.id), "region": region})
+    db.commit()
+    return SessionDeploymentResponse(item=_to_deployment_item(deployment))
+
+
+@router.post("/api/sessions/{session_id}/destroy", response_model=SessionDeploymentResponse)
+def destroy_session(
+    session_id: str,
+    payload: DestroyRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionDeploymentResponse:
+    if not payload.confirmDestroy:
+        raise HTTPException(status_code=400, detail="confirmDestroy must be true")
+    expected_code = _build_destroy_confirmation_code(session_id)
+    if payload.confirmationCode != expected_code:
+        raise HTTPException(status_code=400, detail=f"invalid confirmationCode. expected: {expected_code}")
+
+    session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
+    terraform_result = db.scalars(
+        select(SessionTerraformResult).where(SessionTerraformResult.session_id == session.id).limit(1)
+    ).first()
+    if not terraform_result or not terraform_result.terraform_code:
+        raise HTTPException(status_code=409, detail="terraform result not found for this session")
+
+    region = payload.awsRegion or "ap-northeast-2"
+    role_arn, role_external_id, role_session_name = _resolve_user_assume_role(db, current_user)
+    if not payload.simulate and not role_arn:
+        raise HTTPException(
+            status_code=400,
+            detail="deploy role is not configured for this user. configure DEPLOY_USER_ROLE_MAP or DEPLOY_ASSUME_ROLE_ARN",
+        )
+    deployment = SessionDeployment(
+        session_id=session.id,
+        action="DESTROY",
+        status="PENDING",
+        region=region,
+        log_text="[destroy] queued",
+    )
+    db.add(deployment)
+    db.commit()
+    db.refresh(deployment)
+
+    background_tasks.add_task(
+        _execute_deployment_job,
+        deployment_id=str(deployment.id),
+        session_id=str(session.id),
+        action="DESTROY",
+        terraform_code=terraform_result.terraform_code,
+        auth_mode="ASSUME_ROLE",
+        access_key_id=None,
+        secret_access_key=None,
+        session_token=None,
+        role_arn=role_arn,
+        role_external_id=role_external_id,
+        role_session_name=role_session_name,
+        region=region,
+        simulate=payload.simulate,
+    )
+    record_session_event(db, session, "DESTROY_QUEUED", {"deploymentId": str(deployment.id), "region": region})
+    db.commit()
+    return SessionDeploymentResponse(item=_to_deployment_item(deployment))
+
+
+@router.get("/api/sessions/{session_id}/deployments", response_model=SessionDeploymentListResponse)
+def list_session_deployments(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionDeploymentListResponse:
+    session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
+    rows = db.scalars(
+        select(SessionDeployment).where(SessionDeployment.session_id == session.id).order_by(SessionDeployment.created_at.desc())
+    ).all()
+    return SessionDeploymentListResponse(items=[_to_deployment_item(row) for row in rows])
+
+
