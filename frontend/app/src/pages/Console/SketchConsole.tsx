@@ -126,6 +126,22 @@ type SessionCompareResponse = {
   };
 };
 
+type SessionDeploymentItem = {
+  deploymentId: string;
+  action: "DEPLOY" | "DESTROY" | string;
+  status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | string;
+  region: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  log?: string | null;
+  appliedResources?: Record<string, unknown> | null;
+};
+
+type SessionDeploymentListResponse = {
+  items: SessionDeploymentItem[];
+};
+
 type GitHubRepoAnalyzeResponse = {
   fullName: string;
   defaultBranch: string;
@@ -366,6 +382,15 @@ export default function SketchConsole() {
   const [isLoadingCompare, setIsLoadingCompare] = useState(false);
   const [compareBaseSessionId, setCompareBaseSessionId] = useState<string | null>(null);
   const [compareTargetSessionId, setCompareTargetSessionId] = useState<string | null>(null);
+  const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
+  const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
+  const [awsSessionToken, setAwsSessionToken] = useState("");
+  const [awsDeployRegion, setAwsDeployRegion] = useState("ap-northeast-2");
+  const [simulateDeployment, setSimulateDeployment] = useState(true);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [isDestroying, setIsDestroying] = useState(false);
+  const [deployments, setDeployments] = useState<SessionDeploymentItem[]>([]);
+  const [isLoadingDeployments, setIsLoadingDeployments] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
   const [githubRepos, setGithubRepos] = useState<GitHubRepoItem[]>([]);
@@ -506,6 +531,18 @@ export default function SketchConsole() {
     }
   };
 
+  const loadDeployments = async (sessionId: string, token: string, apiBaseUrl: string) => {
+    setIsLoadingDeployments(true);
+    try {
+      const res = await authFetch(`${apiBaseUrl}/api/sessions/${sessionId}/deployments`, token);
+      const data = (await res.json()) as SessionDeploymentListResponse;
+      setDeployments(data.items ?? []);
+      return data.items ?? [];
+    } finally {
+      setIsLoadingDeployments(false);
+    }
+  };
+
   const openSessionVersion = async (sessionId: string) => {
     const auth = getAuth();
     if (!auth?.accessToken) {
@@ -519,6 +556,7 @@ export default function SketchConsole() {
     try {
       const detail = await loadSessionDetail(sessionId, auth.accessToken, apiBaseUrl);
       const history = await loadProjectSessions(detail.projectId, auth.accessToken, apiBaseUrl);
+      await loadDeployments(sessionId, auth.accessToken, apiBaseUrl);
       if (history.some((item) => item.sessionId === sessionId && item.versionNo > 1)) {
         try {
           await loadCompareSummary(sessionId, auth.accessToken, apiBaseUrl);
@@ -561,11 +599,13 @@ export default function SketchConsole() {
         setGenerationStatus("idle");
         setCompareBaseSessionId(null);
         setCompareTargetSessionId(null);
+        setDeployments([]);
         return;
       }
 
       const latest = history[0];
       await loadSessionDetail(latest.sessionId, auth.accessToken, apiBaseUrl);
+      await loadDeployments(latest.sessionId, auth.accessToken, apiBaseUrl);
       setCompareTargetSessionId(latest.sessionId);
       setCompareBaseSessionId(history[1]?.sessionId ?? null);
     } catch (error) {
@@ -594,6 +634,83 @@ export default function SketchConsole() {
       await loadCompareSummary(compareTargetSessionId, auth.accessToken, apiBaseUrl, compareBaseSessionId);
     } catch (error) {
       applyUserError("비교 결과를 불러오지 못했어요.", error);
+    }
+  };
+
+  const deployCurrentSession = async () => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("로그인이 필요합니다.");
+      return;
+    }
+    if (!currentSessionId) {
+      setErrorMessage("배포할 세션을 먼저 선택해 주세요.");
+      return;
+    }
+    if (!awsAccessKeyId.trim() || !awsSecretAccessKey.trim()) {
+      setErrorMessage("AWS Access Key / Secret Key를 입력해 주세요.");
+      return;
+    }
+
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setIsDeploying(true);
+    setErrorMessage(null);
+    setErrorRequestId(null);
+    try {
+      await authFetch(`${apiBaseUrl}/api/sessions/${currentSessionId}/deploy`, auth.accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          awsAccessKeyId: awsAccessKeyId.trim(),
+          awsSecretAccessKey: awsSecretAccessKey.trim(),
+          awsSessionToken: awsSessionToken.trim() || null,
+          awsRegion: awsDeployRegion.trim() || null,
+          simulate: simulateDeployment,
+        }),
+      });
+      await loadDeployments(currentSessionId, auth.accessToken, apiBaseUrl);
+    } catch (error) {
+      applyUserError("배포 실행에 실패했어요.", error);
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const destroyCurrentSession = async () => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("로그인이 필요합니다.");
+      return;
+    }
+    if (!currentSessionId) {
+      setErrorMessage("삭제할 세션을 먼저 선택해 주세요.");
+      return;
+    }
+    if (!awsAccessKeyId.trim() || !awsSecretAccessKey.trim()) {
+      setErrorMessage("AWS Access Key / Secret Key를 입력해 주세요.");
+      return;
+    }
+
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setIsDestroying(true);
+    setErrorMessage(null);
+    setErrorRequestId(null);
+    try {
+      await authFetch(`${apiBaseUrl}/api/sessions/${currentSessionId}/destroy`, auth.accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          awsAccessKeyId: awsAccessKeyId.trim(),
+          awsSecretAccessKey: awsSecretAccessKey.trim(),
+          awsSessionToken: awsSessionToken.trim() || null,
+          awsRegion: awsDeployRegion.trim() || null,
+          simulate: simulateDeployment,
+          confirmDestroy: true,
+        }),
+      });
+      await loadDeployments(currentSessionId, auth.accessToken, apiBaseUrl);
+    } catch (error) {
+      applyUserError("리소스 삭제에 실패했어요.", error);
+    } finally {
+      setIsDestroying(false);
     }
   };
 
@@ -698,6 +815,7 @@ export default function SketchConsole() {
     setCompareSummary(null);
     setCompareBaseSessionId(null);
     setCompareTargetSessionId(null);
+    setDeployments([]);
 
     try {
       const toDataUrl = (file: File): Promise<string> =>
@@ -803,6 +921,7 @@ export default function SketchConsole() {
 
       const detail = await loadSessionDetail(session.sessionId, auth.accessToken, apiBaseUrl);
       const history = await loadProjectSessions(project.projectId, auth.accessToken, apiBaseUrl);
+      await loadDeployments(session.sessionId, auth.accessToken, apiBaseUrl);
       setCompareTargetSessionId(session.sessionId);
       setCompareBaseSessionId(history.find((item) => item.sessionId !== session.sessionId)?.sessionId ?? null);
       setCompareSummary(null);
@@ -1744,6 +1863,103 @@ export default function SketchConsole() {
               </div>
             ) : null}
           </div>
+
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-semibold text-slate-900">AWS 배포/삭제</p>
+              <p className="text-xs text-slate-500">
+                선택된 세션의 Terraform 결과를 기준으로 배포하거나 삭제할 수 있습니다.
+              </p>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <input
+                type="text"
+                placeholder="AWS Access Key ID"
+                value={awsAccessKeyId}
+                onChange={(event) => setAwsAccessKeyId(event.target.value)}
+                className="h-9 rounded-md border border-slate-300 px-3 text-xs"
+              />
+              <input
+                type="password"
+                placeholder="AWS Secret Access Key"
+                value={awsSecretAccessKey}
+                onChange={(event) => setAwsSecretAccessKey(event.target.value)}
+                className="h-9 rounded-md border border-slate-300 px-3 text-xs"
+              />
+              <input
+                type="text"
+                placeholder="AWS Session Token (optional)"
+                value={awsSessionToken}
+                onChange={(event) => setAwsSessionToken(event.target.value)}
+                className="h-9 rounded-md border border-slate-300 px-3 text-xs md:col-span-2"
+              />
+              <input
+                type="text"
+                placeholder="ap-northeast-2"
+                value={awsDeployRegion}
+                onChange={(event) => setAwsDeployRegion(event.target.value)}
+                className="h-9 rounded-md border border-slate-300 px-3 text-xs"
+              />
+              <label className="flex items-center gap-2 rounded-md border border-slate-300 px-3 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={simulateDeployment}
+                  onChange={(event) => setSimulateDeployment(event.target.checked)}
+                />
+                simulate 모드(테스트용)
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void deployCurrentSession();
+                }}
+                disabled={!currentSessionId || isDeploying}
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
+              >
+                {isDeploying ? "배포 중..." : "배포 실행"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void destroyCurrentSession();
+                }}
+                disabled={!currentSessionId || isDestroying}
+                className="h-9 rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 disabled:opacity-50"
+              >
+                {isDestroying ? "삭제 중..." : "리소스 삭제"}
+              </button>
+            </div>
+
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-slate-700">배포 이력</p>
+              {isLoadingDeployments ? (
+                <p className="mt-1 text-xs text-slate-500">배포 이력을 불러오는 중입니다.</p>
+              ) : deployments.length === 0 ? (
+                <p className="mt-1 text-xs text-slate-500">아직 배포/삭제 이력이 없습니다.</p>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  {deployments.map((item) => (
+                    <div key={item.deploymentId} className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="rounded bg-slate-900 px-1.5 py-0.5 text-white">{item.action}</span>
+                        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-slate-700">{item.status}</span>
+                        <span className="text-slate-500">{item.region}</span>
+                        <span className="text-slate-400">{item.createdAt}</span>
+                      </div>
+                      {item.log ? (
+                        <pre className="mt-2 max-h-40 overflow-auto rounded bg-slate-950 p-2 text-[10px] text-slate-100">
+                          <code>{item.log}</code>
+                        </pre>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {analysisCoverage !== null && analysisCoverage < 0.75 ? (
             <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               요구사항 반영률이 낮습니다 ({Math.round(analysisCoverage * 100)}%). 미반영 힌트:{" "}

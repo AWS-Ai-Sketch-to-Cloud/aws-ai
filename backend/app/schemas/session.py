@@ -195,6 +195,45 @@ class SessionCompareResponse(BaseModel):
     contractVersion: Literal["v2"] = CONTRACT_VERSION
 
 
+class DeployRequest(BaseModel):
+    awsAccessKeyId: str = Field(min_length=16, max_length=200)
+    awsSecretAccessKey: str = Field(min_length=16, max_length=200)
+    awsSessionToken: str | None = Field(default=None, max_length=4096)
+    awsRegion: str | None = Field(default=None, max_length=30)
+    simulate: bool = False
+
+
+class DestroyRequest(BaseModel):
+    awsAccessKeyId: str = Field(min_length=16, max_length=200)
+    awsSecretAccessKey: str = Field(min_length=16, max_length=200)
+    awsSessionToken: str | None = Field(default=None, max_length=4096)
+    awsRegion: str | None = Field(default=None, max_length=30)
+    simulate: bool = False
+    confirmDestroy: bool = False
+
+
+class SessionDeploymentItem(BaseModel):
+    deploymentId: str
+    action: str
+    status: str
+    region: str
+    startedAt: str | None = None
+    completedAt: str | None = None
+    createdAt: str
+    log: str | None = None
+    appliedResources: dict[str, Any] | None = None
+
+
+class SessionDeploymentResponse(BaseModel):
+    item: SessionDeploymentItem
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class SessionDeploymentListResponse(BaseModel):
+    items: list[SessionDeploymentItem]
+    contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
 class ErrorPayload(BaseModel):
     code: Literal["PARSE_ERROR", "SCHEMA_ERROR", "TIMEOUT_ERROR", "INTERNAL_ERROR"]
     message: str

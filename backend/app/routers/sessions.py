@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from jsonschema import ValidationError, validate
 from sqlalchemy import select
@@ -10,15 +12,28 @@ from app.core.constants import ARCH_SCHEMA, CONTRACT_VERSION, dt_to_iso
 from app.core.deps import get_current_user
 from app.cost_calculator import estimate_monthly_cost
 from app.database import get_db
-from app.models import AppSession, Project, SessionArchitecture, SessionCostResult, SessionTerraformResult, User
+from app.models import (
+    AppSession,
+    Project,
+    SessionArchitecture,
+    SessionCostResult,
+    SessionDeployment,
+    SessionTerraformResult,
+    User,
+)
 from app.schemas.session import (
     AnalysisMeta,
     AnalyzeRequest,
     AnalyzeResponse,
     ArchitectureSaveRequest,
     CostCalculateResponse,
+    DeployRequest,
+    DestroyRequest,
     ErrorPayload,
     SessionCompareResponse,
+    SessionDeploymentItem,
+    SessionDeploymentListResponse,
+    SessionDeploymentResponse,
     SessionDetailArchitecture,
     SessionDetailCost,
     SessionDetailError,
@@ -29,6 +44,7 @@ from app.schemas.session import (
     SessionStatusPatchResponse,
     TerraformGenerateResponse,
 )
+from app.services.deployment_service import run_deploy, run_destroy
 from app.services.compare_service import (
     build_cost_diff,
     build_session_summary,
@@ -46,6 +62,20 @@ from app.terraform_generator import generate_terraform_from_architecture
 from app.terraform_validator import validate_terraform_code
 
 router = APIRouter()
+
+
+def _to_deployment_item(deployment: SessionDeployment) -> SessionDeploymentItem:
+    return SessionDeploymentItem(
+        deploymentId=str(deployment.id),
+        action=deployment.action,
+        status=deployment.status,
+        region=deployment.region,
+        startedAt=dt_to_iso(deployment.started_at) if deployment.started_at else None,
+        completedAt=dt_to_iso(deployment.completed_at) if deployment.completed_at else None,
+        createdAt=dt_to_iso(deployment.created_at),
+        log=deployment.log_text,
+        appliedResources=deployment.applied_resources_json,
+    )
 
 
 def _analyze_session_impl(
@@ -398,3 +428,117 @@ def analyze_session_api(
     current_user: User = Depends(get_current_user),
 ) -> AnalyzeResponse:
     return _analyze_session_impl(session_id, payload, db, current_user)
+
+
+@router.post("/api/sessions/{session_id}/deploy", response_model=SessionDeploymentResponse)
+def deploy_session(
+    session_id: str,
+    payload: DeployRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionDeploymentResponse:
+    session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
+    terraform_result = db.scalars(
+        select(SessionTerraformResult).where(SessionTerraformResult.session_id == session.id).limit(1)
+    ).first()
+    if not terraform_result or not terraform_result.terraform_code:
+        raise HTTPException(status_code=409, detail="terraform result not found for this session")
+
+    region = payload.awsRegion or "ap-northeast-2"
+    deployment = SessionDeployment(
+        session_id=session.id,
+        action="DEPLOY",
+        status="RUNNING",
+        region=region,
+        started_at=datetime.now(timezone.utc),
+        log_text="[deployment] started",
+    )
+    db.add(deployment)
+    db.commit()
+    db.refresh(deployment)
+
+    result = run_deploy(
+        terraform_code=terraform_result.terraform_code,
+        access_key_id=payload.awsAccessKeyId,
+        secret_access_key=payload.awsSecretAccessKey,
+        session_token=payload.awsSessionToken,
+        region=region,
+        simulate=payload.simulate,
+    )
+    deployment.status = result.status
+    deployment.log_text = result.log
+    deployment.applied_resources_json = result.resources
+    deployment.completed_at = datetime.now(timezone.utc)
+    deployment.updated_at = datetime.now(timezone.utc)
+    event_type = "DEPLOY_SUCCEEDED" if result.status == "SUCCEEDED" else "DEPLOY_FAILED"
+    record_session_event(db, session, event_type, {"deploymentId": str(deployment.id), "region": region})
+    db.commit()
+    db.refresh(deployment)
+    return SessionDeploymentResponse(item=_to_deployment_item(deployment))
+
+
+@router.post("/api/sessions/{session_id}/destroy", response_model=SessionDeploymentResponse)
+def destroy_session(
+    session_id: str,
+    payload: DestroyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionDeploymentResponse:
+    if not payload.confirmDestroy:
+        raise HTTPException(status_code=400, detail="confirmDestroy must be true")
+
+    session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
+    terraform_result = db.scalars(
+        select(SessionTerraformResult).where(SessionTerraformResult.session_id == session.id).limit(1)
+    ).first()
+    if not terraform_result or not terraform_result.terraform_code:
+        raise HTTPException(status_code=409, detail="terraform result not found for this session")
+
+    region = payload.awsRegion or "ap-northeast-2"
+    deployment = SessionDeployment(
+        session_id=session.id,
+        action="DESTROY",
+        status="RUNNING",
+        region=region,
+        started_at=datetime.now(timezone.utc),
+        log_text="[destroy] started",
+    )
+    db.add(deployment)
+    db.commit()
+    db.refresh(deployment)
+
+    result = run_destroy(
+        terraform_code=terraform_result.terraform_code,
+        access_key_id=payload.awsAccessKeyId,
+        secret_access_key=payload.awsSecretAccessKey,
+        session_token=payload.awsSessionToken,
+        region=region,
+        simulate=payload.simulate,
+    )
+    deployment.status = result.status
+    deployment.log_text = result.log
+    deployment.applied_resources_json = result.resources
+    deployment.completed_at = datetime.now(timezone.utc)
+    deployment.updated_at = datetime.now(timezone.utc)
+    event_type = "DESTROY_SUCCEEDED" if result.status == "SUCCEEDED" else "DESTROY_FAILED"
+    record_session_event(db, session, event_type, {"deploymentId": str(deployment.id), "region": region})
+    db.commit()
+    db.refresh(deployment)
+    return SessionDeploymentResponse(item=_to_deployment_item(deployment))
+
+
+@router.get("/api/sessions/{session_id}/deployments", response_model=SessionDeploymentListResponse)
+def list_session_deployments(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionDeploymentListResponse:
+    session = get_session_or_404(db, session_id)
+    ensure_session_access(session, current_user)
+    rows = db.scalars(
+        select(SessionDeployment).where(SessionDeployment.session_id == session.id).order_by(SessionDeployment.created_at.desc())
+    ).all()
+    return SessionDeploymentListResponse(items=[_to_deployment_item(row) for row in rows])
+

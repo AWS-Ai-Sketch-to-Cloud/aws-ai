@@ -59,6 +59,9 @@
 | `GET` | `/api/sessions/{sessionId}` | 세션의 입력, 상태, 아키텍처, Terraform, 비용 결과를 한 번에 조회한다. |
 | `POST` | `/api/sessions/{sessionId}/analyze` | 텍스트/스케치 입력을 분석해 세션의 아키텍처 JSON 결과를 생성한다. |
 | `PATCH` | `/api/sessions/{sessionId}/status` | 세션 상태와 오류 정보를 갱신한다. |
+| `POST` | `/api/sessions/{sessionId}/deploy` | 해당 세션 Terraform 결과를 기준으로 AWS 배포를 실행한다. |
+| `POST` | `/api/sessions/{sessionId}/destroy` | 해당 세션 Terraform 결과를 기준으로 AWS 리소스 삭제를 실행한다. |
+| `GET` | `/api/sessions/{sessionId}/deployments` | 세션 배포/삭제 실행 이력을 조회한다. |
 
 ### 결과 생성/저장
 
@@ -98,6 +101,112 @@
   "displayName": "홍길동",
   "isActive": true,
   "role": "USER",
+  "contractVersion": "v2"
+}
+```
+
+## 5. 배포/삭제
+
+### `POST /api/sessions/{sessionId}/deploy`
+
+- 세션 Terraform 결과를 기준으로 AWS 배포를 실행한다.
+
+요청:
+
+```json
+{
+  "awsAccessKeyId": "AKIA...",
+  "awsSecretAccessKey": "....",
+  "awsSessionToken": null,
+  "awsRegion": "ap-northeast-2",
+  "simulate": true
+}
+```
+
+응답:
+
+```json
+{
+  "item": {
+    "deploymentId": "uuid",
+    "action": "DEPLOY",
+    "status": "SUCCEEDED",
+    "region": "ap-northeast-2",
+    "startedAt": "2026-04-02T15:00:00Z",
+    "completedAt": "2026-04-02T15:00:02Z",
+    "createdAt": "2026-04-02T15:00:00Z",
+    "log": "[simulate] terraform apply skipped",
+    "appliedResources": {
+      "status": "simulated",
+      "region": "ap-northeast-2"
+    }
+  },
+  "contractVersion": "v2"
+}
+```
+
+### `POST /api/sessions/{sessionId}/destroy`
+
+- 세션 Terraform 결과를 기준으로 AWS 리소스 삭제를 실행한다.
+
+요청:
+
+```json
+{
+  "awsAccessKeyId": "AKIA...",
+  "awsSecretAccessKey": "....",
+  "awsSessionToken": null,
+  "awsRegion": "ap-northeast-2",
+  "simulate": true,
+  "confirmDestroy": true
+}
+```
+
+응답:
+
+```json
+{
+  "item": {
+    "deploymentId": "uuid",
+    "action": "DESTROY",
+    "status": "SUCCEEDED",
+    "region": "ap-northeast-2",
+    "startedAt": "2026-04-02T15:10:00Z",
+    "completedAt": "2026-04-02T15:10:01Z",
+    "createdAt": "2026-04-02T15:10:00Z",
+    "log": "[simulate] terraform destroy skipped",
+    "appliedResources": {
+      "status": "simulated-destroy",
+      "region": "ap-northeast-2"
+    }
+  },
+  "contractVersion": "v2"
+}
+```
+
+### `GET /api/sessions/{sessionId}/deployments`
+
+- 세션 배포/삭제 실행 이력을 최신 순으로 조회한다.
+
+응답:
+
+```json
+{
+  "items": [
+    {
+      "deploymentId": "uuid",
+      "action": "DESTROY",
+      "status": "SUCCEEDED",
+      "region": "ap-northeast-2",
+      "startedAt": "2026-04-02T15:10:00Z",
+      "completedAt": "2026-04-02T15:10:01Z",
+      "createdAt": "2026-04-02T15:10:00Z",
+      "log": "[simulate] terraform destroy skipped",
+      "appliedResources": {
+        "status": "simulated-destroy"
+      }
+    }
+  ],
   "contractVersion": "v2"
 }
 ```

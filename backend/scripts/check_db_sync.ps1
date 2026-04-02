@@ -1,5 +1,5 @@
 param(
-    [string]$ExpectedHead = "a1b2c3d4e5f6"
+    [string]$ExpectedHead = "b2c3d4e5f6a7"
 )
 
 $ErrorActionPreference = "Stop"

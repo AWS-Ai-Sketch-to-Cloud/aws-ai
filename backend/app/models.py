@@ -110,6 +110,7 @@ class AppSession(Base):
     terraform_result: Mapped[SessionTerraformResult | None] = relationship(back_populates="session", uselist=False)
     cost_result: Mapped[SessionCostResult | None] = relationship(back_populates="session", uselist=False)
     events: Mapped[list[SessionEvent]] = relationship(back_populates="session")
+    deployments: Mapped[list[SessionDeployment]] = relationship(back_populates="session")
 
 
 class SessionArchitecture(Base):
@@ -168,3 +169,21 @@ class SessionEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     session: Mapped[AppSession] = relationship(back_populates="events")
+
+
+class SessionDeployment(Base):
+    __tablename__ = "session_deployments"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    session_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"))
+    action: Mapped[str] = mapped_column(String(20))  # DEPLOY | DESTROY
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")  # PENDING | RUNNING | SUCCEEDED | FAILED
+    region: Mapped[str] = mapped_column(String(30), default="ap-northeast-2")
+    log_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    applied_resources_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    session: Mapped[AppSession] = relationship(back_populates="deployments")

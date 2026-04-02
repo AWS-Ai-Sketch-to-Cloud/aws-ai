@@ -271,3 +271,68 @@ def test_invalid_status_transition_returns_409() -> None:
 
     assert response.status_code == 409
     assert "invalid status transition" in response.json().get("detail", "")
+
+
+def test_deploy_destroy_and_list_history_in_simulation_mode() -> None:
+    client = TestClient(app)
+    headers = _create_auth_headers(client)
+
+    project = _create_project(client, headers, "deploy-proj")
+    session = _create_session(client, headers, project["projectId"], "deploy baseline")
+    session_id = session["sessionId"]
+
+    _save_architecture(
+        client,
+        headers,
+        session_id,
+        {
+            "vpc": True,
+            "ec2": {"count": 1, "instance_type": "t3.micro"},
+            "rds": {"enabled": False, "engine": None},
+            "bedrock": {"enabled": False, "model": None},
+            "additional_services": [],
+            "usage": {"monthly_hours": 730, "data_transfer_gb": 1, "storage_gb": 10, "requests_million": 1},
+            "public": False,
+            "region": "ap-northeast-2",
+        },
+    )
+    _must(client.post(f"/api/sessions/{session_id}/terraform", headers=headers), "terraform")
+
+    deploy = _must(
+        client.post(
+            f"/api/sessions/{session_id}/deploy",
+            headers=headers,
+            json={
+                "awsAccessKeyId": "AKIAEXAMPLEACCESS1",
+                "awsSecretAccessKey": "exampleSecretKeyExampleSecret",
+                "awsRegion": "ap-northeast-2",
+                "simulate": True,
+            },
+        ),
+        "deploy",
+    )
+    assert deploy["item"]["action"] == "DEPLOY"
+    assert deploy["item"]["status"] == "SUCCEEDED"
+
+    destroy = _must(
+        client.post(
+            f"/api/sessions/{session_id}/destroy",
+            headers=headers,
+            json={
+                "awsAccessKeyId": "AKIAEXAMPLEACCESS1",
+                "awsSecretAccessKey": "exampleSecretKeyExampleSecret",
+                "awsRegion": "ap-northeast-2",
+                "simulate": True,
+                "confirmDestroy": True,
+            },
+        ),
+        "destroy",
+    )
+    assert destroy["item"]["action"] == "DESTROY"
+    assert destroy["item"]["status"] == "SUCCEEDED"
+
+    history = _must(client.get(f"/api/sessions/{session_id}/deployments", headers=headers), "deployment history")
+    assert len(history["items"]) >= 2
+    actions = {item["action"] for item in history["items"]}
+    assert "DEPLOY" in actions
+    assert "DESTROY" in actions
