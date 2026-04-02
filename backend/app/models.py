@@ -29,6 +29,7 @@ class User(Base):
     projects: Mapped[list[Project]] = relationship(back_populates="owner")
     auth_identities: Mapped[list[AuthIdentity]] = relationship(back_populates="user")
     auth_sessions: Mapped[list[AuthSession]] = relationship(back_populates="user")
+    deploy_config: Mapped[UserDeployConfig | None] = relationship(back_populates="user", uselist=False)
 
 
 class AuthIdentity(Base):
@@ -73,6 +74,22 @@ class GitHubOAuthToken(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User] = relationship()
+
+
+class UserDeployConfig(Base):
+    __tablename__ = "user_deploy_configs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
+    role_arn: Mapped[str] = mapped_column(String(500))
+    role_external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    role_session_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="deploy_config")
 
 
 class Project(Base):

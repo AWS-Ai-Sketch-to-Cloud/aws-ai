@@ -196,20 +196,15 @@ class SessionCompareResponse(BaseModel):
 
 
 class DeployRequest(BaseModel):
-    awsAccessKeyId: str = Field(min_length=16, max_length=200)
-    awsSecretAccessKey: str = Field(min_length=16, max_length=200)
-    awsSessionToken: str | None = Field(default=None, max_length=4096)
     awsRegion: str | None = Field(default=None, max_length=30)
     simulate: bool = False
 
 
 class DestroyRequest(BaseModel):
-    awsAccessKeyId: str = Field(min_length=16, max_length=200)
-    awsSecretAccessKey: str = Field(min_length=16, max_length=200)
-    awsSessionToken: str | None = Field(default=None, max_length=4096)
     awsRegion: str | None = Field(default=None, max_length=30)
     simulate: bool = False
     confirmDestroy: bool = False
+    confirmationCode: str | None = Field(default=None, min_length=4, max_length=100)
 
 
 class SessionDeploymentItem(BaseModel):

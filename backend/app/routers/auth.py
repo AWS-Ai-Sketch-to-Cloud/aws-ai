@@ -14,15 +14,17 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.constants import dt_to_iso
 from app.core.deps import get_current_user
 from app.core.security import hash_text, to_access_token
 from app.database import get_db
-from app.models import AuthIdentity, AuthSession, User
+from app.models import AuthIdentity, AuthSession, User, UserDeployConfig
 from app.schemas.auth import (
+    AwsDeployConfigRequest,
+    AwsDeployConfigResponse,
     LoginRequest,
     LoginResponse,
     LoginUser,
@@ -662,4 +664,58 @@ def get_me(user: User = Depends(get_current_user)) -> MeResponse:
         isActive=user.is_active,
         role=user.role,
         lastLoginAt=dt_to_iso(user.last_login_at) if user.last_login_at else None,
+    )
+
+
+@router.get("/api/users/aws-deploy-config", response_model=AwsDeployConfigResponse)
+def get_aws_deploy_config(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> AwsDeployConfigResponse:
+    try:
+        config = db.scalars(select(UserDeployConfig).where(UserDeployConfig.user_id == user.id).limit(1)).first()
+    except ProgrammingError:
+        db.rollback()
+        return AwsDeployConfigResponse(configured=False)
+    if not config:
+        return AwsDeployConfigResponse(configured=False)
+    return AwsDeployConfigResponse(
+        configured=True,
+        roleArn=config.role_arn,
+        roleExternalId=config.role_external_id,
+        roleSessionName=config.role_session_name,
+    )
+
+
+@router.put("/api/users/aws-deploy-config", response_model=AwsDeployConfigResponse)
+def upsert_aws_deploy_config(
+    payload: AwsDeployConfigRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> AwsDeployConfigResponse:
+    try:
+        config = db.scalars(select(UserDeployConfig).where(UserDeployConfig.user_id == user.id).limit(1)).first()
+    except ProgrammingError as e:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="aws deploy config table is not ready. run alembic upgrade head") from e
+    if config:
+        config.role_arn = payload.roleArn.strip()
+        config.role_external_id = payload.roleExternalId.strip() if payload.roleExternalId else None
+        config.role_session_name = payload.roleSessionName.strip() if payload.roleSessionName else None
+        config.updated_at = datetime.now(timezone.utc)
+    else:
+        config = UserDeployConfig(
+            user_id=user.id,
+            role_arn=payload.roleArn.strip(),
+            role_external_id=payload.roleExternalId.strip() if payload.roleExternalId else None,
+            role_session_name=payload.roleSessionName.strip() if payload.roleSessionName else None,
+        )
+        db.add(config)
+
+    db.commit()
+    return AwsDeployConfigResponse(
+        configured=True,
+        roleArn=config.role_arn,
+        roleExternalId=config.role_external_id,
+        roleSessionName=config.role_session_name,
     )

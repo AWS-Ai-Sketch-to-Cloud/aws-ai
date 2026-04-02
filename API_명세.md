@@ -115,9 +115,6 @@
 
 ```json
 {
-  "awsAccessKeyId": "AKIA...",
-  "awsSecretAccessKey": "....",
-  "awsSessionToken": null,
   "awsRegion": "ap-northeast-2",
   "simulate": true
 }
@@ -153,9 +150,6 @@
 
 ```json
 {
-  "awsAccessKeyId": "AKIA...",
-  "awsSecretAccessKey": "....",
-  "awsSessionToken": null,
   "awsRegion": "ap-northeast-2",
   "simulate": true,
   "confirmDestroy": true
@@ -634,3 +628,36 @@
   "contractVersion": "v2"
 }
 ```
+
+## AWS 연결 설정 API (신규)
+
+### GET /api/users/aws-deploy-config
+- 현재 로그인 사용자의 AWS 배포 Role 설정 조회
+
+응답 예시:
+```json
+{
+  "configured": true,
+  "roleArn": "arn:aws:iam::123456789012:role/stc-deploy-role",
+  "roleExternalId": "stc-external",
+  "roleSessionName": "stc-user-session",
+  "contractVersion": "v2"
+}
+```
+
+### PUT /api/users/aws-deploy-config
+- 현재 로그인 사용자의 AWS 배포 Role 설정 저장/갱신
+
+요청 예시:
+```json
+{
+  "roleArn": "arn:aws:iam::123456789012:role/stc-deploy-role",
+  "roleExternalId": "stc-external",
+  "roleSessionName": "stc-user-session"
+}
+```
+
+참고:
+- 배포/삭제 API는 사용자 키(AccessKey/Secret) 입력을 받지 않음
+- 서버는 저장된 Role ARN(또는 서버 fallback env)으로 AssumeRole 수행
+- DB 마이그레이션이 안 된 환경에서는 PUT이 503을 반환하며 `alembic upgrade head` 필요

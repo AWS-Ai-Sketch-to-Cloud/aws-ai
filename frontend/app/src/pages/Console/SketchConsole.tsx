@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { Header } from "../../components/dashboard/header";
 import { ControlPanel } from "../../components/dashboard/control-panel";
@@ -140,6 +140,13 @@ type SessionDeploymentItem = {
 
 type SessionDeploymentListResponse = {
   items: SessionDeploymentItem[];
+};
+
+type AwsDeployConfigResponse = {
+  configured: boolean;
+  roleArn?: string | null;
+  roleExternalId?: string | null;
+  roleSessionName?: string | null;
 };
 
 type GitHubRepoAnalyzeResponse = {
@@ -382,11 +389,14 @@ export default function SketchConsole() {
   const [isLoadingCompare, setIsLoadingCompare] = useState(false);
   const [compareBaseSessionId, setCompareBaseSessionId] = useState<string | null>(null);
   const [compareTargetSessionId, setCompareTargetSessionId] = useState<string | null>(null);
-  const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
-  const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
-  const [awsSessionToken, setAwsSessionToken] = useState("");
   const [awsDeployRegion, setAwsDeployRegion] = useState("ap-northeast-2");
   const [simulateDeployment, setSimulateDeployment] = useState(true);
+  const [awsRoleArn, setAwsRoleArn] = useState("");
+  const [awsRoleExternalId, setAwsRoleExternalId] = useState("");
+  const [awsRoleSessionName, setAwsRoleSessionName] = useState("stc-console-session");
+  const [isSavingAwsConfig, setIsSavingAwsConfig] = useState(false);
+  const [isLoadingAwsConfig, setIsLoadingAwsConfig] = useState(false);
+  const [isAwsConfigured, setIsAwsConfigured] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [isDestroying, setIsDestroying] = useState(false);
   const [deployments, setDeployments] = useState<SessionDeploymentItem[]>([]);
@@ -543,6 +553,46 @@ export default function SketchConsole() {
     }
   };
 
+  const loadAwsDeployConfig = async (token: string, apiBaseUrl: string) => {
+    setIsLoadingAwsConfig(true);
+    try {
+      const res = await authFetch(`${apiBaseUrl}/api/users/aws-deploy-config`, token);
+      const data = (await res.json()) as AwsDeployConfigResponse;
+      setIsAwsConfigured(Boolean(data.configured));
+      setAwsRoleArn(data.roleArn ?? "");
+      setAwsRoleExternalId(data.roleExternalId ?? "");
+      setAwsRoleSessionName(data.roleSessionName ?? "stc-console-session");
+      return data;
+    } finally {
+      setIsLoadingAwsConfig(false);
+    }
+  };
+
+  useEffect(() => {
+    const hasRunning = deployments.some((item) => item.status === "PENDING" || item.status === "RUNNING");
+    if (!hasRunning || !currentSessionId) {
+      return;
+    }
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      return;
+    }
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    const timer = setInterval(() => {
+      void loadDeployments(currentSessionId, auth.accessToken, apiBaseUrl);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [deployments, currentSessionId]);
+
+  useEffect(() => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      return;
+    }
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    void loadAwsDeployConfig(auth.accessToken, apiBaseUrl);
+  }, []);
+
   const openSessionVersion = async (sessionId: string) => {
     const auth = getAuth();
     if (!auth?.accessToken) {
@@ -637,6 +687,37 @@ export default function SketchConsole() {
     }
   };
 
+  const saveAwsDeployConfig = async () => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("로그인이 필요합니다.");
+      return;
+    }
+    if (!awsRoleArn.trim()) {
+      setErrorMessage("Role ARN을 입력해 주세요.");
+      return;
+    }
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setIsSavingAwsConfig(true);
+    setErrorMessage(null);
+    setErrorRequestId(null);
+    try {
+      await authFetch(`${apiBaseUrl}/api/users/aws-deploy-config`, auth.accessToken, {
+        method: "PUT",
+        body: JSON.stringify({
+          roleArn: awsRoleArn.trim(),
+          roleExternalId: awsRoleExternalId.trim() || null,
+          roleSessionName: awsRoleSessionName.trim() || null,
+        }),
+      });
+      await loadAwsDeployConfig(auth.accessToken, apiBaseUrl);
+    } catch (error) {
+      applyUserError("AWS 연결 설정 저장에 실패했어요.", error);
+    } finally {
+      setIsSavingAwsConfig(false);
+    }
+  };
+
   const deployCurrentSession = async () => {
     const auth = getAuth();
     if (!auth?.accessToken) {
@@ -647,11 +728,10 @@ export default function SketchConsole() {
       setErrorMessage("배포할 세션을 먼저 선택해 주세요.");
       return;
     }
-    if (!awsAccessKeyId.trim() || !awsSecretAccessKey.trim()) {
-      setErrorMessage("AWS Access Key / Secret Key를 입력해 주세요.");
+    if (!simulateDeployment && !isAwsConfigured) {
+      setErrorMessage("먼저 AWS 연결 설정(Role ARN)을 저장해 주세요.");
       return;
     }
-
     const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
     setIsDeploying(true);
     setErrorMessage(null);
@@ -660,9 +740,6 @@ export default function SketchConsole() {
       await authFetch(`${apiBaseUrl}/api/sessions/${currentSessionId}/deploy`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({
-          awsAccessKeyId: awsAccessKeyId.trim(),
-          awsSecretAccessKey: awsSecretAccessKey.trim(),
-          awsSessionToken: awsSessionToken.trim() || null,
           awsRegion: awsDeployRegion.trim() || null,
           simulate: simulateDeployment,
         }),
@@ -685,11 +762,10 @@ export default function SketchConsole() {
       setErrorMessage("삭제할 세션을 먼저 선택해 주세요.");
       return;
     }
-    if (!awsAccessKeyId.trim() || !awsSecretAccessKey.trim()) {
-      setErrorMessage("AWS Access Key / Secret Key를 입력해 주세요.");
+    if (!simulateDeployment && !isAwsConfigured) {
+      setErrorMessage("먼저 AWS 연결 설정(Role ARN)을 저장해 주세요.");
       return;
     }
-
     const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
     setIsDestroying(true);
     setErrorMessage(null);
@@ -698,12 +774,10 @@ export default function SketchConsole() {
       await authFetch(`${apiBaseUrl}/api/sessions/${currentSessionId}/destroy`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({
-          awsAccessKeyId: awsAccessKeyId.trim(),
-          awsSecretAccessKey: awsSecretAccessKey.trim(),
-          awsSessionToken: awsSessionToken.trim() || null,
           awsRegion: awsDeployRegion.trim() || null,
           simulate: simulateDeployment,
           confirmDestroy: true,
+          confirmationCode: `DESTROY-${currentSessionId.replace(/-/g, "").slice(-6).toUpperCase()}`,
         }),
       });
       await loadDeployments(currentSessionId, auth.accessToken, apiBaseUrl);
@@ -1869,29 +1943,38 @@ export default function SketchConsole() {
               <p className="text-sm font-semibold text-slate-900">AWS 배포/삭제</p>
               <p className="text-xs text-slate-500">
                 선택된 세션의 Terraform 결과를 기준으로 배포하거나 삭제할 수 있습니다.
+                인증은 서버에 등록된 Assume Role을 사용합니다.
               </p>
+            </div>
+            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold text-slate-700">처음 이용 가이드</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-slate-600">
+                <li>AWS 콘솔에서 IAM Role을 생성합니다. (신뢰 정책에 우리 서비스 백엔드 Role 허용)</li>
+                <li>생성된 Role ARN을 아래 입력란에 저장합니다.</li>
+                <li>저장 후 `simulate`를 끄고 실제 배포를 실행합니다.</li>
+              </ol>
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               <input
                 type="text"
-                placeholder="AWS Access Key ID"
-                value={awsAccessKeyId}
-                onChange={(event) => setAwsAccessKeyId(event.target.value)}
-                className="h-9 rounded-md border border-slate-300 px-3 text-xs"
+                placeholder="Role ARN (arn:aws:iam::123456789012:role/...)"
+                value={awsRoleArn}
+                onChange={(event) => setAwsRoleArn(event.target.value)}
+                className="h-9 rounded-md border border-slate-300 px-3 text-xs md:col-span-2"
               />
               <input
-                type="password"
-                placeholder="AWS Secret Access Key"
-                value={awsSecretAccessKey}
-                onChange={(event) => setAwsSecretAccessKey(event.target.value)}
+                type="text"
+                placeholder="Role External ID (optional)"
+                value={awsRoleExternalId}
+                onChange={(event) => setAwsRoleExternalId(event.target.value)}
                 className="h-9 rounded-md border border-slate-300 px-3 text-xs"
               />
               <input
                 type="text"
-                placeholder="AWS Session Token (optional)"
-                value={awsSessionToken}
-                onChange={(event) => setAwsSessionToken(event.target.value)}
-                className="h-9 rounded-md border border-slate-300 px-3 text-xs md:col-span-2"
+                placeholder="Role Session Name (optional)"
+                value={awsRoleSessionName}
+                onChange={(event) => setAwsRoleSessionName(event.target.value)}
+                className="h-9 rounded-md border border-slate-300 px-3 text-xs"
               />
               <input
                 type="text"
@@ -1900,6 +1983,13 @@ export default function SketchConsole() {
                 onChange={(event) => setAwsDeployRegion(event.target.value)}
                 className="h-9 rounded-md border border-slate-300 px-3 text-xs"
               />
+              <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                {isLoadingAwsConfig
+                  ? "AWS 연결 상태를 불러오는 중입니다."
+                  : isAwsConfigured
+                    ? "AWS 연결 설정이 저장되었습니다. (키 입력 불필요)"
+                    : "아직 AWS 연결 설정이 없습니다. Role ARN 저장 후 실제 배포를 실행하세요."}
+              </p>
               <label className="flex items-center gap-2 rounded-md border border-slate-300 px-3 text-xs text-slate-600">
                 <input
                   type="checkbox"
@@ -1908,6 +1998,16 @@ export default function SketchConsole() {
                 />
                 simulate 모드(테스트용)
               </label>
+              <button
+                type="button"
+                onClick={() => {
+                  void saveAwsDeployConfig();
+                }}
+                disabled={isSavingAwsConfig}
+                className="h-9 rounded-md border border-blue-300 bg-blue-50 px-3 text-xs font-medium text-blue-700 disabled:opacity-50"
+              >
+                {isSavingAwsConfig ? "저장 중..." : "AWS 연결 설정 저장"}
+              </button>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -1915,7 +2015,7 @@ export default function SketchConsole() {
                 onClick={() => {
                   void deployCurrentSession();
                 }}
-                disabled={!currentSessionId || isDeploying}
+                disabled={!currentSessionId || isDeploying || (!simulateDeployment && !isAwsConfigured)}
                 className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
               >
                 {isDeploying ? "배포 중..." : "배포 실행"}
@@ -1925,12 +2025,17 @@ export default function SketchConsole() {
                 onClick={() => {
                   void destroyCurrentSession();
                 }}
-                disabled={!currentSessionId || isDestroying}
+                disabled={!currentSessionId || isDestroying || (!simulateDeployment && !isAwsConfigured)}
                 className="h-9 rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 disabled:opacity-50"
               >
                 {isDestroying ? "삭제 중..." : "리소스 삭제"}
               </button>
             </div>
+            {currentSessionId ? (
+              <p className="mt-2 text-[11px] text-slate-500">
+                삭제 확인코드(자동 적용): <code>DESTROY-{currentSessionId.replace(/-/g, "").slice(-6).toUpperCase()}</code>
+              </p>
+            ) : null}
 
             <div className="mt-3">
               <p className="text-xs font-semibold text-slate-700">배포 이력</p>
@@ -1988,4 +2093,5 @@ export default function SketchConsole() {
     </>
   );
 }
+
 

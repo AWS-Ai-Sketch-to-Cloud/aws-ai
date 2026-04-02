@@ -41,6 +41,24 @@ def _create_auth_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {login['accessToken']}"}
 
 
+def _wait_for_deployment_status(
+    client: TestClient,
+    headers: dict[str, str],
+    session_id: str,
+    action: str,
+    expected: str,
+    timeout_sec: int = 15,
+) -> dict:
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        history = _must(client.get(f"/api/sessions/{session_id}/deployments", headers=headers), "deployment history")
+        candidate = next((item for item in history["items"] if item["action"] == action), None)
+        if candidate and candidate["status"] == expected:
+            return candidate
+        time.sleep(0.3)
+    raise RuntimeError(f"deployment {action} did not reach {expected} within timeout")
+
+
 def _create_project(client: TestClient, headers: dict[str, str], name: str, description: str = "test") -> dict:
     return _must(
         client.post("/api/projects", headers=headers, json={"name": name, "description": description}),
@@ -303,8 +321,6 @@ def test_deploy_destroy_and_list_history_in_simulation_mode() -> None:
             f"/api/sessions/{session_id}/deploy",
             headers=headers,
             json={
-                "awsAccessKeyId": "AKIAEXAMPLEACCESS1",
-                "awsSecretAccessKey": "exampleSecretKeyExampleSecret",
                 "awsRegion": "ap-northeast-2",
                 "simulate": True,
             },
@@ -312,27 +328,99 @@ def test_deploy_destroy_and_list_history_in_simulation_mode() -> None:
         "deploy",
     )
     assert deploy["item"]["action"] == "DEPLOY"
-    assert deploy["item"]["status"] == "SUCCEEDED"
+    assert deploy["item"]["status"] in {"PENDING", "RUNNING", "SUCCEEDED"}
+    _wait_for_deployment_status(client, headers, session_id, "DEPLOY", "SUCCEEDED")
 
     destroy = _must(
         client.post(
             f"/api/sessions/{session_id}/destroy",
             headers=headers,
             json={
-                "awsAccessKeyId": "AKIAEXAMPLEACCESS1",
-                "awsSecretAccessKey": "exampleSecretKeyExampleSecret",
                 "awsRegion": "ap-northeast-2",
                 "simulate": True,
                 "confirmDestroy": True,
+                "confirmationCode": f"DESTROY-{session_id.replace('-', '')[-6:].upper()}",
             },
         ),
         "destroy",
     )
     assert destroy["item"]["action"] == "DESTROY"
-    assert destroy["item"]["status"] == "SUCCEEDED"
+    assert destroy["item"]["status"] in {"PENDING", "RUNNING", "SUCCEEDED"}
+    _wait_for_deployment_status(client, headers, session_id, "DESTROY", "SUCCEEDED")
 
     history = _must(client.get(f"/api/sessions/{session_id}/deployments", headers=headers), "deployment history")
     assert len(history["items"]) >= 2
     actions = {item["action"] for item in history["items"]}
     assert "DEPLOY" in actions
     assert "DESTROY" in actions
+
+
+def test_destroy_requires_confirmation_code() -> None:
+    client = TestClient(app)
+    headers = _create_auth_headers(client)
+    project = _create_project(client, headers, "destroy-confirm-proj")
+    session = _create_session(client, headers, project["projectId"], "destroy confirm")
+    session_id = session["sessionId"]
+
+    _save_architecture(
+        client,
+        headers,
+        session_id,
+        {
+            "vpc": True,
+            "ec2": {"count": 1, "instance_type": "t3.micro"},
+            "rds": {"enabled": False, "engine": None},
+            "bedrock": {"enabled": False, "model": None},
+            "additional_services": [],
+            "usage": {"monthly_hours": 730, "data_transfer_gb": 1, "storage_gb": 10, "requests_million": 1},
+            "public": False,
+            "region": "ap-northeast-2",
+        },
+    )
+    _must(client.post(f"/api/sessions/{session_id}/terraform", headers=headers), "terraform")
+
+    response = client.post(
+        f"/api/sessions/{session_id}/destroy",
+        headers=headers,
+        json={
+            "awsRegion": "ap-northeast-2",
+            "simulate": True,
+            "confirmDestroy": True,
+            "confirmationCode": "WRONG-CODE",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_deploy_requires_saved_aws_config_for_real_mode() -> None:
+    client = TestClient(app)
+    headers = _create_auth_headers(client)
+
+    project = _create_project(client, headers, "deploy-realmode-proj")
+    session = _create_session(client, headers, project["projectId"], "deploy real mode")
+    session_id = session["sessionId"]
+
+    _save_architecture(
+        client,
+        headers,
+        session_id,
+        {
+            "vpc": True,
+            "ec2": {"count": 1, "instance_type": "t3.micro"},
+            "rds": {"enabled": False, "engine": None},
+            "bedrock": {"enabled": False, "model": None},
+            "additional_services": [],
+            "usage": {"monthly_hours": 730, "data_transfer_gb": 1, "storage_gb": 10, "requests_million": 1},
+            "public": False,
+            "region": "ap-northeast-2",
+        },
+    )
+    _must(client.post(f"/api/sessions/{session_id}/terraform", headers=headers), "terraform")
+
+    deploy_res = client.post(
+        f"/api/sessions/{session_id}/deploy",
+        headers=headers,
+        json={"awsRegion": "ap-northeast-2", "simulate": False},
+    )
+    assert deploy_res.status_code == 400
+    assert "deploy role is not configured" in deploy_res.json().get("detail", "")
