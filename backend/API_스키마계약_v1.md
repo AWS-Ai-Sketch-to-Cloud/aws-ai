@@ -5,7 +5,7 @@
 - 인증, 프로젝트, 세션, 결과 저장 API의 필드와 상태값을 고정해 구현 흔들림을 줄인다.
 
 버전:
-- `contract_version`: `v2`
+- `contractVersion`: `v2`
 - 변경 원칙: breaking change 발생 시 다음 버전으로 올린다.
 
 ## 1. 공통 상태값

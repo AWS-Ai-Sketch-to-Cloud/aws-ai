@@ -61,11 +61,11 @@ def run_smoke() -> None:
             f"/api/sessions/{session_id}/analyze",
             headers=auth_headers,
             json={
-                "input_text": (
+                "inputText": (
                     "Seoul, public architecture with 2 EC2 t3.small, RDS mysql, NAT gateway and ALB. "
                     "data transfer 10GB, storage 30GB, requests 0.5 million"
                 ),
-                "input_type": "text",
+                "inputType": "text",
             },
         ),
         "analyze",

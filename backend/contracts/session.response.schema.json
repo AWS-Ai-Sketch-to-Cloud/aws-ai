@@ -1,127 +1,130 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sketch-to-cloud.local/schema/session-response-v1.json",
-  "title": "SessionResponseV1",
+  "$id": "https://sketch-to-cloud.local/schema/session-detail-response-v2.json",
+  "title": "SessionDetailResponseV2",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "session_id",
-    "project_id",
+    "sessionId",
+    "projectId",
+    "versionNo",
+    "inputType",
     "status",
-    "input_text",
-    "parsed_json",
-    "error",
-    "created_at",
-    "updated_at",
-    "contract_version"
+    "createdAt",
+    "updatedAt",
+    "contractVersion"
   ],
   "properties": {
-    "session_id": {
+    "sessionId": {
       "type": "string",
       "minLength": 1
     },
-    "project_id": {
+    "projectId": {
       "type": "string",
       "minLength": 1
+    },
+    "versionNo": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "inputType": {
+      "type": "string",
+      "enum": ["TEXT", "SKETCH", "TEXT_WITH_SKETCH"]
+    },
+    "inputText": {
+      "type": ["string", "null"]
+    },
+    "inputImageUrl": {
+      "type": ["string", "null"]
     },
     "status": {
       "type": "string",
-      "enum": ["created", "analyzing", "generated", "failed"]
-    },
-    "input_text": {
-      "type": "string"
-    },
-    "parsed_json": {
-      "oneOf": [
-        {
-          "$ref": "../A_JSON_스키마_v1.json"
-        },
-        {
-          "type": "null"
-        }
+      "enum": [
+        "CREATED",
+        "ANALYZING",
+        "ANALYZED",
+        "GENERATING_TERRAFORM",
+        "GENERATED",
+        "COST_CALCULATED",
+        "FAILED"
       ]
+    },
+    "architecture": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["schemaVersion", "architectureJson"],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "architectureJson": {
+          "$ref": "../A_JSON_스키마_v1.json"
+        }
+      }
+    },
+    "terraform": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["validationStatus", "terraformCode"],
+      "properties": {
+        "validationStatus": {
+          "type": "string"
+        },
+        "terraformCode": {
+          "type": "string"
+        },
+        "validationOutput": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "cost": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["currency", "region", "assumptionJson", "monthlyTotal", "costBreakdownJson"],
+      "properties": {
+        "currency": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "assumptionJson": {
+          "type": "object"
+        },
+        "monthlyTotal": {
+          "type": "number"
+        },
+        "costBreakdownJson": {
+          "type": "object"
+        }
+      }
     },
     "error": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["code", "message"],
-          "properties": {
-            "code": {
-              "type": "string",
-              "enum": ["PARSE_ERROR", "SCHEMA_ERROR", "TIMEOUT_ERROR", "INTERNAL_ERROR"]
-            },
-            "message": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": ["string", "null"]
         },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "created_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "updated_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "contract_version": {
-      "type": "string",
-      "const": "v1"
-    }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "status": { "const": "generated" }
-        },
-        "required": ["status"]
-      },
-      "then": {
-        "properties": {
-          "parsed_json": {
-            "$ref": "../A_JSON_스키마_v1.json"
-          },
-          "error": {
-            "type": "null"
-          }
+        "message": {
+          "type": ["string", "null"]
         }
       }
     },
-    {
-      "if": {
-        "properties": {
-          "status": { "const": "failed" }
-        },
-        "required": ["status"]
-      },
-      "then": {
-        "properties": {
-          "error": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["code", "message"],
-            "properties": {
-              "code": {
-                "type": "string",
-                "enum": ["PARSE_ERROR", "SCHEMA_ERROR", "TIMEOUT_ERROR", "INTERNAL_ERROR"]
-              },
-              "message": {
-                "type": "string",
-                "minLength": 1
-              }
-            }
-          }
-        }
-      }
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "contractVersion": {
+      "type": "string",
+      "const": "v2"
     }
-  ]
+  }
 }
 

@@ -57,13 +57,13 @@ def _analyze_session_impl(
     session = get_session_or_404(db, session_id)
     ensure_session_access(session, current_user)
     transition_session_status(db, session, "ANALYZING")
-    session.input_text = payload.input_text
-    session.input_type = "SKETCH" if payload.input_type == "sketch" else "TEXT"
+    session.input_text = payload.inputText
+    session.input_type = "SKETCH" if payload.inputType == "sketch" else "TEXT"
     db.commit()
 
     try:
         parsed, analysis_meta = parse_architecture_with_retry(
-            payload.input_text, ARCH_SCHEMA, payload.input_image_data_url
+            payload.inputText, ARCH_SCHEMA, payload.inputImageDataUrl
         )
 
         architecture = db.scalars(
@@ -84,20 +84,20 @@ def _analyze_session_impl(
         record_session_event(db, session, "ARCHITECTURE_GENERATED", {"schemaVersion": CONTRACT_VERSION})
         db.commit()
         return AnalyzeResponse(
-            session_id=session_id,
+            sessionId=session_id,
             status="generated",
-            parsed_json=parsed,
+            parsedJson=parsed,
             analysisMeta=AnalysisMeta(**analysis_meta),
         )
     except AIParseError as e:
         transition_session_status(db, session, "FAILED", error_code=e.code, error_message=e.message)
         db.commit()
-        return AnalyzeResponse(session_id=session_id, status="failed", error=ErrorPayload(code=e.code, message=e.message))
+        return AnalyzeResponse(sessionId=session_id, status="failed", error=ErrorPayload(code=e.code, message=e.message))
     except Exception as e:  # noqa: BLE001
         transition_session_status(db, session, "FAILED", error_code="INTERNAL_ERROR", error_message=str(e))
         db.commit()
         return AnalyzeResponse(
-            session_id=session_id, status="failed", error=ErrorPayload(code="INTERNAL_ERROR", message=str(e))
+            sessionId=session_id, status="failed", error=ErrorPayload(code="INTERNAL_ERROR", message=str(e))
         )
 
 

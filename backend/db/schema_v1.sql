@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS projects (
     name VARCHAR(100) NOT NULL,
     description TEXT,
     -- Auth 파이프라인 연결 전까지 nullable 허용. 추후 NOT NULL 전환.
-    owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

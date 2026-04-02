@@ -10,8 +10,9 @@ from app.main import app
 
 
 def _auth_client() -> TestClient:
+    fixed_user_id = uuid4()
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=uuid4(),
+        id=fixed_user_id,
         login_id="feedback-test-user",
         email="feedback-test@example.com",
         display_name="Feedback User",

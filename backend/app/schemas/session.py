@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.core.constants import CONTRACT_VERSION
 
@@ -37,9 +37,17 @@ class SessionListResponse(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
-    input_text: str = Field(min_length=1, max_length=2000)
-    input_type: Literal["text", "sketch"] = "text"
-    input_image_data_url: str | None = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    inputText: str = Field(min_length=1, max_length=2000, validation_alias=AliasChoices("inputText", "input_text"))
+    inputType: Literal["text", "sketch"] = Field(
+        default="text",
+        validation_alias=AliasChoices("inputType", "input_type"),
+    )
+    inputImageDataUrl: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("inputImageDataUrl", "input_image_data_url"),
+    )
 
 
 class ArchitectureSaveRequest(BaseModel):
@@ -203,9 +211,9 @@ class AnalysisMeta(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
-    session_id: str
+    sessionId: str
     status: Literal["generated", "failed"]
-    parsed_json: dict[str, Any] | None = None
+    parsedJson: dict[str, Any] | None = None
     analysisMeta: AnalysisMeta | None = None
     error: ErrorPayload | None = None
-    contract_version: Literal["v2"] = CONTRACT_VERSION
+    contractVersion: Literal["v2"] = CONTRACT_VERSION

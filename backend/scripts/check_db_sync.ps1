@@ -1,11 +1,21 @@
 param(
-    [string]$ExpectedHead = "01898398e88a"
+    [string]$ExpectedHead = "a1b2c3d4e5f6"
 )
 
 $ErrorActionPreference = "Stop"
 
 if (-not $env:DATABASE_URL) {
-    Write-Error "DATABASE_URL is not set."
+    $envPath = Join-Path (Get-Location) ".env"
+    if (Test-Path $envPath) {
+        $line = Get-Content $envPath | Where-Object { $_ -match '^\s*DATABASE_URL\s*=' } | Select-Object -First 1
+        if ($line) {
+            $env:DATABASE_URL = ($line -split '=', 2)[1].Trim().Trim('"').Trim("'")
+        }
+    }
+}
+
+if (-not $env:DATABASE_URL) {
+    Write-Error "DATABASE_URL is not set. Set env var or add DATABASE_URL to backend/.env"
     exit 1
 }
 

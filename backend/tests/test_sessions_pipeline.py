@@ -18,10 +18,13 @@ def _create_auth_headers(client: TestClient) -> dict[str, str]:
     login_id = f"test{suffix}"
     email = f"test{suffix}@example.com"
     password = "TestPass!90"
+    client_ip = f"198.18.{suffix % 250}.{(suffix // 250) % 250}"
+    auth_headers = {"x-forwarded-for": client_ip}
 
     _must(
         client.post(
             "/api/auth/register",
+            headers=auth_headers,
             json={
                 "loginId": login_id,
                 "email": email,
@@ -31,7 +34,10 @@ def _create_auth_headers(client: TestClient) -> dict[str, str]:
         ),
         "register",
     )
-    login = _must(client.post("/api/auth/login", json={"loginId": login_id, "password": password}), "login")
+    login = _must(
+        client.post("/api/auth/login", headers=auth_headers, json={"loginId": login_id, "password": password}),
+        "login",
+    )
     return {"Authorization": f"Bearer {login['accessToken']}"}
 
 
@@ -78,7 +84,7 @@ def test_analyze_requires_auth() -> None:
     client = TestClient(app)
     response = client.post(
         "/api/sessions/00000000-0000-0000-0000-000000000000/analyze",
-        json={"input_text": "test", "input_type": "text"},
+        json={"inputText": "test", "inputType": "text"},
     )
     assert response.status_code == 401
 
@@ -89,7 +95,7 @@ def test_removed_legacy_session_routes_return_not_found() -> None:
     detail_response = client.get("/sessions/00000000-0000-0000-0000-000000000000")
     analyze_response = client.post(
         "/sessions/00000000-0000-0000-0000-000000000000/analyze",
-        json={"input_text": "test", "input_type": "text"},
+        json={"inputText": "test", "inputType": "text"},
     )
 
     assert create_response.status_code == 404
@@ -140,7 +146,11 @@ def test_compare_uses_selected_base_session_and_returns_detailed_diff() -> None:
         {
             "vpc": True,
             "ec2": {"count": 1, "instance_type": "t3.small"},
-            "usage": {"monthly_hours": 730, "storage_gb": 20},
+            "rds": {"enabled": True, "engine": "mysql"},
+            "bedrock": {"enabled": False, "model": None},
+            "additional_services": [],
+            "usage": {"monthly_hours": 730, "data_transfer_gb": 5, "storage_gb": 20, "requests_million": 1},
+            "public": False,
             "region": "ap-northeast-2",
         },
     )
@@ -151,8 +161,11 @@ def test_compare_uses_selected_base_session_and_returns_detailed_diff() -> None:
         {
             "vpc": True,
             "ec2": {"count": 2, "instance_type": "t3.medium"},
-            "usage": {"monthly_hours": 730, "storage_gb": 50},
-            "alb": {"enabled": True},
+            "rds": {"enabled": True, "engine": "mysql"},
+            "bedrock": {"enabled": False, "model": None},
+            "additional_services": ["alb"],
+            "usage": {"monthly_hours": 730, "data_transfer_gb": 10, "storage_gb": 50, "requests_million": 2},
+            "public": False,
             "region": "ap-northeast-2",
         },
     )
@@ -172,7 +185,10 @@ def test_compare_uses_selected_base_session_and_returns_detailed_diff() -> None:
 
     assert compare["baseSession"]["sessionId"] == base_session["sessionId"]
     assert compare["targetSession"]["sessionId"] == target_session["sessionId"]
-    assert any(item["path"] == "$.alb" and item["changeType"] == "added" for item in compare["jsonDiff"])
+    assert any(
+        item["path"] == "$.additional_services" and item["changeType"] == "changed"
+        for item in compare["jsonDiff"]
+    )
     assert any(item["path"] == "$.ec2.count" and item["changeType"] == "changed" for item in compare["jsonDiff"])
     assert compare["terraformDiff"]["changed"] is True
     assert "base.tf" in compare["terraformDiff"]["diff"]
@@ -222,3 +238,36 @@ def test_cost_contains_optimization_summary() -> None:
     assert isinstance(scenarios, list)
     assert len(scenarios) == 3
     assert optimization.get("recommended_scenario") in {"cost_saver", "balanced", "performance"}
+
+
+def test_project_session_access_is_forbidden_for_other_user() -> None:
+    client = TestClient(app)
+    owner_headers = _create_auth_headers(client)
+    other_headers = _create_auth_headers(client)
+
+    project = _create_project(client, owner_headers, "owner-only-project")
+    create_by_other = client.post(
+        f"/api/projects/{project['projectId']}/sessions",
+        headers=other_headers,
+        json={"inputType": "TEXT", "inputText": "should fail"},
+    )
+    list_by_other = client.get(f"/api/projects/{project['projectId']}/sessions", headers=other_headers)
+
+    assert create_by_other.status_code == 403
+    assert list_by_other.status_code == 403
+
+
+def test_invalid_status_transition_returns_409() -> None:
+    client = TestClient(app)
+    headers = _create_auth_headers(client)
+    project = _create_project(client, headers, "transition-project")
+    session = _create_session(client, headers, project["projectId"], "invalid transition check")
+
+    response = client.patch(
+        f"/api/sessions/{session['sessionId']}/status",
+        headers=headers,
+        json={"status": "GENERATED"},
+    )
+
+    assert response.status_code == 409
+    assert "invalid status transition" in response.json().get("detail", "")

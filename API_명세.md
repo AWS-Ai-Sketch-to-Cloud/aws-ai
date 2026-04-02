@@ -1,7 +1,7 @@
 # API 명세
 
 버전:
-- `contract_version`: `v2`
+- `contractVersion`: `v2`
 
 기준:
 - `users.login_id`를 로그인 식별자로 사용
@@ -234,29 +234,26 @@
 설명:
 - 스케치 이미지를 업로드하고 세션에서 사용할 URL을 발급한다.
 - 업로드된 파일은 스토리지에 저장하고, API는 접근 가능한 URL 또는 파일 키를 반환한다.
+- 인증(`Authorization: Bearer <accessToken>`)이 필요하다.
 
 요청:
 
-```json
-{
-  "contentType": "image/png",
-  "fileName": "architecture-sketch.png"
-}
-```
+- `multipart/form-data`
+- 필드: `file` (image/*)
 
 응답:
 
 ```json
 {
   "fileId": "uuid",
-  "url": "https://storage.example.com/uploads/architecture-sketch.png",
+  "url": "http://127.0.0.1:8000/api/uploads/files/{fileId}/architecture-sketch.png",
   "contentType": "image/png",
   "contractVersion": "v2"
 }
 ```
 
 비고:
-- 실제 구현은 `multipart/form-data` 직접 업로드 또는 presigned URL 발급 방식 중 하나를 선택할 수 있다.
+- 현재 구현은 `multipart/form-data` 직접 업로드 방식이다.
 - 세션 생성 API의 `inputImageUrl`에는 이 API가 반환한 `url`을 넣는다.
 
 ### `POST /api/projects/{projectId}/sessions`
@@ -396,9 +393,9 @@
 
 ```json
 {
-  "input_text": "EC2 2개와 MySQL RDS 1개를 프라이빗하게 구성",
-  "input_type": "text",
-  "input_image_data_url": null
+  "inputText": "EC2 2개와 MySQL RDS 1개를 프라이빗하게 구성",
+  "inputType": "text",
+  "inputImageDataUrl": null
 }
 ```
 
@@ -406,9 +403,9 @@
 
 ```json
 {
-  "input_text": "Analyze the uploaded architecture diagram and infer AWS resources and counts precisely.",
-  "input_type": "sketch",
-  "input_image_data_url": "data:image/png;base64,..."
+  "inputText": "Analyze the uploaded architecture diagram and infer AWS resources and counts precisely.",
+  "inputType": "sketch",
+  "inputImageDataUrl": "data:image/png;base64,..."
 }
 ```
 
@@ -416,9 +413,9 @@
 
 ```json
 {
-  "session_id": "uuid",
+  "sessionId": "uuid",
   "status": "generated",
-  "parsed_json": {
+  "parsedJson": {
     "vpc": true,
     "ec2": {
       "count": 2,
@@ -437,7 +434,7 @@
     "usedImage": false,
     "fallbackUsed": false
   },
-  "contract_version": "v2"
+  "contractVersion": "v2"
 }
 ```
 

@@ -712,13 +712,12 @@ export default function SketchConsole() {
       let imageDataUrl: string | null = null;
       if (payload.uploadedFile) {
         imageDataUrl = await toDataUrl(payload.uploadedFile);
+        const uploadForm = new FormData();
+        uploadForm.append("file", payload.uploadedFile);
         const upRes = await fetch(`${apiBaseUrl}/api/uploads/images`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contentType: payload.uploadedFile.type || "image/png",
-            fileName: payload.uploadedFile.name,
-          }),
+          headers: { Authorization: `Bearer ${auth.accessToken}` },
+          body: uploadForm,
         });
 
         if (!upRes.ok) {
@@ -764,16 +763,16 @@ export default function SketchConsole() {
       const analyzeRes = await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/analyze`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({
-          input_text: payload.description?.trim()
+          inputText: payload.description?.trim()
             ? payload.description
             : `Analyze the uploaded architecture diagram and infer AWS resources and counts precisely.`,
-          input_type: payload.uploadedFile ? "sketch" : "text",
-          input_image_data_url: imageDataUrl,
+          inputType: payload.uploadedFile ? "sketch" : "text",
+          inputImageDataUrl: imageDataUrl,
         }),
       });
       const analyze = (await analyzeRes.json()) as {
         status: "generated" | "failed";
-        parsed_json?: Record<string, unknown>;
+        parsedJson?: Record<string, unknown>;
         error?: { code?: string; message?: string };
         analysisMeta?: {
           provider?: string;
@@ -811,12 +810,12 @@ export default function SketchConsole() {
       console.groupCollapsed("[STC] Analysis Result");
       console.info("sessionId", session.sessionId);
       console.info("analysisMeta", analyze.analysisMeta);
-      console.info("parsedJson", analyze.parsed_json);
+      console.info("parsedJson", analyze.parsedJson);
       console.info("costAssumptions", detail.cost?.assumptionJson);
       console.info("costBreakdown", detail.cost?.costBreakdownJson);
       console.groupEnd();
 
-      setArchitectureJson(detail.architecture?.architectureJson ?? analyze.parsed_json ?? null);
+      setArchitectureJson(detail.architecture?.architectureJson ?? analyze.parsedJson ?? null);
       setAnalysisCoverage(
         typeof analyze.analysisMeta?.requirementCoverage === "number"
           ? analyze.analysisMeta.requirementCoverage
