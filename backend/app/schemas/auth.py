@@ -87,6 +87,14 @@ class AwsDeployConfigRequest(BaseModel):
     roleExternalId: str | None = Field(default=None, min_length=2, max_length=200)
     roleSessionName: str | None = Field(default=None, min_length=2, max_length=64)
 
+    @field_validator("roleArn")
+    @classmethod
+    def validate_role_arn(cls, value: str) -> str:
+        arn = value.strip()
+        if ":role/" not in arn:
+            raise ValueError("roleArn must be IAM Role ARN (contains ':role/')")
+        return arn
+
 
 class AwsDeployConfigResponse(BaseModel):
     configured: bool

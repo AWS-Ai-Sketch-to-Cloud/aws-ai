@@ -397,6 +397,8 @@ export default function SketchConsole() {
   const [isSavingAwsConfig, setIsSavingAwsConfig] = useState(false);
   const [isLoadingAwsConfig, setIsLoadingAwsConfig] = useState(false);
   const [isAwsConfigured, setIsAwsConfigured] = useState(false);
+  const [awsConfigMessage, setAwsConfigMessage] = useState<string | null>(null);
+  const [awsConfigMessageTone, setAwsConfigMessageTone] = useState<"info" | "success" | "error">("info");
   const [isDeploying, setIsDeploying] = useState(false);
   const [isDestroying, setIsDestroying] = useState(false);
   const [deployments, setDeployments] = useState<SessionDeploymentItem[]>([]);
@@ -562,6 +564,13 @@ export default function SketchConsole() {
       setAwsRoleArn(data.roleArn ?? "");
       setAwsRoleExternalId(data.roleExternalId ?? "");
       setAwsRoleSessionName(data.roleSessionName ?? "stc-console-session");
+      if (data.configured) {
+        setAwsConfigMessage("AWS 연결 설정이 저장되어 있습니다.");
+        setAwsConfigMessageTone("success");
+      } else {
+        setAwsConfigMessage("아직 AWS 연결 설정이 없습니다. Role ARN을 저장해 주세요.");
+        setAwsConfigMessageTone("info");
+      }
       return data;
     } finally {
       setIsLoadingAwsConfig(false);
@@ -695,6 +704,14 @@ export default function SketchConsole() {
     }
     if (!awsRoleArn.trim()) {
       setErrorMessage("Role ARN을 입력해 주세요.");
+      setAwsConfigMessage("Role ARN을 입력해 주세요.");
+      setAwsConfigMessageTone("error");
+      return;
+    }
+    if (!awsRoleArn.includes(":role/")) {
+      setErrorMessage("User ARN이 아니라 Role ARN을 입력해 주세요. (예: arn:aws:iam::123456789012:role/stc-deploy-role)");
+      setAwsConfigMessage("User ARN이 아니라 Role ARN이 필요합니다.");
+      setAwsConfigMessageTone("error");
       return;
     }
     const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
@@ -711,8 +728,13 @@ export default function SketchConsole() {
         }),
       });
       await loadAwsDeployConfig(auth.accessToken, apiBaseUrl);
+      setAwsConfigMessage("AWS 연결 설정 저장 완료");
+      setAwsConfigMessageTone("success");
     } catch (error) {
       applyUserError("AWS 연결 설정 저장에 실패했어요.", error);
+      const raw = error instanceof Error ? error.message : "저장 실패";
+      setAwsConfigMessage(raw);
+      setAwsConfigMessageTone("error");
     } finally {
       setIsSavingAwsConfig(false);
     }
@@ -2009,6 +2031,19 @@ export default function SketchConsole() {
                 {isSavingAwsConfig ? "저장 중..." : "AWS 연결 설정 저장"}
               </button>
             </div>
+            {awsConfigMessage ? (
+              <p
+                className={`mt-2 text-xs ${
+                  awsConfigMessageTone === "success"
+                    ? "text-emerald-700"
+                    : awsConfigMessageTone === "error"
+                      ? "text-rose-700"
+                      : "text-slate-600"
+                }`}
+              >
+                {awsConfigMessage}
+              </p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
