@@ -150,3 +150,20 @@ def test_aws_deploy_config_roundtrip() -> None:
     body = get_res.json()
     assert body["configured"] is True
     assert body["roleArn"] == "arn:aws:iam::123456789012:role/stc-deploy-role"
+
+
+def test_aws_deploy_config_rejects_user_arn() -> None:
+    client = TestClient(app)
+    headers = _create_auth_headers(client)
+    response = client.put(
+        "/api/users/aws-deploy-config",
+        headers=headers,
+        json={
+            "roleArn": "arn:aws:iam::123456789012:user/test-user",
+            "roleExternalId": None,
+            "roleSessionName": "stc-user-session",
+        },
+    )
+    if response.status_code == 503:
+        return
+    assert response.status_code == 422
