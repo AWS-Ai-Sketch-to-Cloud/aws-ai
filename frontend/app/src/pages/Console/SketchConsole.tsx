@@ -3,8 +3,12 @@ import PageMeta from "../../components/common/PageMeta";
 import { Header } from "../../components/dashboard/header";
 import { ControlPanel } from "../../components/dashboard/control-panel";
 import { ResultPanel } from "../../components/dashboard/result-panel";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { useEffect } from "react";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../../components/ui/tabs";
 
 type AuthSession = {
   accessToken: string;
@@ -243,7 +247,8 @@ type RepoReadiness = {
 };
 
 const DEFAULT_API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://127.0.0.1:8000";
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+  "http://127.0.0.1:8000";
 
 const replaceText = (source: string, before: string, after: string): string =>
   source.split(before).join(after);
@@ -282,7 +287,9 @@ const previewValue = (value: unknown): string => {
   if (typeof value === "string") return value;
   try {
     const serialized = JSON.stringify(value);
-    return serialized.length > 160 ? `${serialized.slice(0, 157)}...` : serialized;
+    return serialized.length > 160
+      ? `${serialized.slice(0, 157)}...`
+      : serialized;
   } catch {
     return String(value);
   }
@@ -306,12 +313,16 @@ const parseGitHubRepoInput = (value: string): string | null => {
   return null;
 };
 
-const buildRepoReportMarkdown = (analysis: GitHubRepoAnalyzeResponse): string => {
+const buildRepoReportMarkdown = (
+  analysis: GitHubRepoAnalyzeResponse,
+): string => {
   const lines: string[] = [];
   lines.push(`# AWS 분석 리포트 - ${analysis.fullName}`);
   lines.push("");
   lines.push(`- 기본 브랜치: ${analysis.defaultBranch}`);
-  lines.push(`- 신뢰도: ${analysis.confidenceLabel} (${Math.round(analysis.confidenceScore * 100)}%)`);
+  lines.push(
+    `- 신뢰도: ${analysis.confidenceLabel} (${Math.round(analysis.confidenceScore * 100)}%)`,
+  );
   lines.push(`- 분석 엔진: ${analysis.analysisProvider}`);
   lines.push("");
   lines.push("## 요약");
@@ -319,7 +330,9 @@ const buildRepoReportMarkdown = (analysis: GitHubRepoAnalyzeResponse): string =>
   lines.push("");
   if (analysis.findings.length > 0) {
     lines.push("## 핵심 요약");
-    analysis.findings.forEach((item) => lines.push(`- ${simplifyAwsWords(item)}`));
+    analysis.findings.forEach((item) =>
+      lines.push(`- ${simplifyAwsWords(item)}`),
+    );
     lines.push("");
   }
   if (analysis.recommendedStack.length > 0) {
@@ -329,7 +342,9 @@ const buildRepoReportMarkdown = (analysis: GitHubRepoAnalyzeResponse): string =>
   }
   if (analysis.deploymentSteps.length > 0) {
     lines.push("## 배포 단계");
-    analysis.deploymentSteps.forEach((item) => lines.push(`1. ${simplifyAwsWords(item)}`));
+    analysis.deploymentSteps.forEach((item) =>
+      lines.push(`1. ${simplifyAwsWords(item)}`),
+    );
     lines.push("");
   }
   if (analysis.risks.length > 0) {
@@ -339,13 +354,21 @@ const buildRepoReportMarkdown = (analysis: GitHubRepoAnalyzeResponse): string =>
   }
   if (analysis.costNotes.length > 0) {
     lines.push("## 비용 메모");
-    analysis.costNotes.forEach((item) => lines.push(`- ${simplifyAwsWords(item)}`));
+    analysis.costNotes.forEach((item) =>
+      lines.push(`- ${simplifyAwsWords(item)}`),
+    );
     lines.push("");
   }
   return lines.join("\n");
 };
 
-const StageBars = ({ title, data }: { title: string; data: Record<string, number> }) => {
+const StageBars = ({
+  title,
+  data,
+}: {
+  title: string;
+  data: Record<string, number>;
+}) => {
   const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
   const max = entries.length ? Math.max(...entries.map(([, v]) => v)) : 1;
   if (entries.length === 0) return null;
@@ -355,14 +378,18 @@ const StageBars = ({ title, data }: { title: string; data: Record<string, number
       <div className="mt-1 space-y-1">
         {entries.map(([name, count]) => (
           <div key={name} className="flex items-center gap-2">
-            <span className="w-28 truncate text-[11px] text-slate-600">{name}</span>
+            <span className="w-28 truncate text-[11px] text-slate-600">
+              {name}
+            </span>
             <div className="h-2 flex-1 rounded bg-slate-200">
               <div
                 className="h-2 rounded bg-slate-700"
                 style={{ width: `${Math.max(6, (count / max) * 100)}%` }}
               />
             </div>
-            <span className="w-8 text-right text-[11px] text-slate-700">{count}</span>
+            <span className="w-8 text-right text-[11px] text-slate-700">
+              {count}
+            </span>
           </div>
         ))}
       </div>
@@ -375,14 +402,20 @@ export default function SketchConsole() {
   const [generationStatus, setGenerationStatus] = useState<
     "idle" | "analyzing" | "complete" | "optimized"
   >("idle");
-  const [activeTab, setActiveTab] = useState<"architecture" | "terraform" | "cost">(
-    "architecture",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "architecture" | "terraform" | "cost"
+  >("architecture");
 
-  const [architectureJson, setArchitectureJson] = useState<Record<string, unknown> | null>(null);
+  const [architectureJson, setArchitectureJson] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const [terraformCode, setTerraformCode] = useState<string | null>(null);
   const [monthlyTotal, setMonthlyTotal] = useState<number | null>(null);
-  const [costBreakdown, setCostBreakdown] = useState<Record<string, number> | null>(null);
+  const [costBreakdown, setCostBreakdown] = useState<Record<
+    string,
+    number
+  > | null>(null);
   const [region, setRegion] = useState<string | null>(null);
   const [currency, setCurrency] = useState<string | null>(null);
   const [costAssumptions, setCostAssumptions] = useState<{
@@ -407,20 +440,29 @@ export default function SketchConsole() {
   const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
   const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
   const [isLoadingSessionDetail, setIsLoadingSessionDetail] = useState(false);
-  const [compareSummary, setCompareSummary] = useState<SessionCompareResponse | null>(null);
+  const [compareSummary, setCompareSummary] =
+    useState<SessionCompareResponse | null>(null);
   const [isLoadingCompare, setIsLoadingCompare] = useState(false);
-  const [compareBaseSessionId, setCompareBaseSessionId] = useState<string | null>(null);
-  const [compareTargetSessionId, setCompareTargetSessionId] = useState<string | null>(null);
+  const [compareBaseSessionId, setCompareBaseSessionId] = useState<
+    string | null
+  >(null);
+  const [compareTargetSessionId, setCompareTargetSessionId] = useState<
+    string | null
+  >(null);
   const [awsDeployRegion, setAwsDeployRegion] = useState("ap-northeast-2");
   const [simulateDeployment, setSimulateDeployment] = useState(true);
   const [awsRoleArn, setAwsRoleArn] = useState("");
   const [awsRoleExternalId, setAwsRoleExternalId] = useState("");
-  const [awsRoleSessionName, setAwsRoleSessionName] = useState("stc-console-session");
+  const [awsRoleSessionName, setAwsRoleSessionName] = useState(
+    "stc-console-session",
+  );
   const [isSavingAwsConfig, setIsSavingAwsConfig] = useState(false);
   const [isLoadingAwsConfig, setIsLoadingAwsConfig] = useState(false);
   const [isAwsConfigured, setIsAwsConfigured] = useState(false);
   const [awsConfigMessage, setAwsConfigMessage] = useState<string | null>(null);
-  const [awsConfigMessageTone, setAwsConfigMessageTone] = useState<"info" | "success" | "error">("info");
+  const [awsConfigMessageTone, setAwsConfigMessageTone] = useState<
+    "info" | "success" | "error"
+  >("info");
   const [isDeploying, setIsDeploying] = useState(false);
   const [isDestroying, setIsDestroying] = useState(false);
   const [deployments, setDeployments] = useState<SessionDeploymentItem[]>([]);
@@ -433,17 +475,24 @@ export default function SketchConsole() {
   const [repoUrlInput, setRepoUrlInput] = useState("");
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
   const [isAnalyzingRepo, setIsAnalyzingRepo] = useState(false);
-  const [repoAnalysis, setRepoAnalysis] = useState<GitHubRepoAnalyzeResponse | null>(null);
-  const [analysisHealth, setAnalysisHealth] = useState<RepoAnalysisHealth | null>(null);
+  const [repoAnalysis, setRepoAnalysis] =
+    useState<GitHubRepoAnalyzeResponse | null>(null);
+  const [analysisHealth, setAnalysisHealth] =
+    useState<RepoAnalysisHealth | null>(null);
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
-  const [repoFeedback, setRepoFeedback] = useState<RepoAnalysisFeedback | null>(null);
+  const [repoFeedback, setRepoFeedback] = useState<RepoAnalysisFeedback | null>(
+    null,
+  );
   const [isSavingFeedback, setIsSavingFeedback] = useState(false);
-  const [githubStatus, setGithubStatus] = useState<GitHubConnectionStatus | null>(null);
+  const [githubStatus, setGithubStatus] =
+    useState<GitHubConnectionStatus | null>(null);
   const [isLoadingGitHubStatus, setIsLoadingGitHubStatus] = useState(false);
   const [readiness, setReadiness] = useState<RepoReadiness | null>(null);
   const [isLoadingReadiness, setIsLoadingReadiness] = useState(false);
   const hasGitHubRepoAccess = Boolean(
-    githubStatus?.tokenPresent && githubStatus?.tokenValid && githubStatus?.githubApiReachable,
+    githubStatus?.tokenPresent &&
+    githubStatus?.tokenValid &&
+    githubStatus?.githubApiReachable,
   );
 
   const getAuth = (): AuthSession | null => {
@@ -482,12 +531,18 @@ export default function SketchConsole() {
       const detail = data.detail ?? "";
       const requestId = data.requestId ?? "";
       if (res.status === 401) {
-        throw new Error(`로그인이 만료되었어요. 다시 로그인해 주세요.${requestId ? ` [${requestId}]` : ""}`);
+        throw new Error(
+          `로그인이 만료되었어요. 다시 로그인해 주세요.${requestId ? ` [${requestId}]` : ""}`,
+        );
       }
       if (res.status === 409 && detail.includes("GitHub")) {
-        throw new Error(`GitHub 연결이 필요해요. GitHub 로그인으로 다시 연결해 주세요.${requestId ? ` [${requestId}]` : ""}`);
+        throw new Error(
+          `GitHub 연결이 필요해요. GitHub 로그인으로 다시 연결해 주세요.${requestId ? ` [${requestId}]` : ""}`,
+        );
       }
-      throw new Error(`${detail || `요청 처리 중 문제가 발생했어요. (${res.status})`}${requestId ? ` [${requestId}]` : ""}`);
+      throw new Error(
+        `${detail || `요청 처리 중 문제가 발생했어요. (${res.status})`}${requestId ? ` [${requestId}]` : ""}`,
+      );
     }
 
     return res;
@@ -504,16 +559,25 @@ export default function SketchConsole() {
     setRegion(detail.cost?.region ?? null);
     setCurrency(detail.cost?.currency ?? null);
     setCostAssumptions(detail.cost?.assumptionJson ?? null);
-    setGenerationStatus(detail.status === "COST_CALCULATED" ? "optimized" : "complete");
+    setGenerationStatus(
+      detail.status === "COST_CALCULATED" ? "optimized" : "complete",
+    );
     if (detail.error?.message) {
       setErrorMessage(detail.error.message);
     }
   };
 
-  const loadProjectSessions = async (projectId: string, token: string, apiBaseUrl: string) => {
+  const loadProjectSessions = async (
+    projectId: string,
+    token: string,
+    apiBaseUrl: string,
+  ) => {
     setIsLoadingSessionHistory(true);
     try {
-      const res = await authFetch(`${apiBaseUrl}/api/projects/${projectId}/sessions`, token);
+      const res = await authFetch(
+        `${apiBaseUrl}/api/projects/${projectId}/sessions`,
+        token,
+      );
       const data = (await res.json()) as SessionListResponse;
       setSessionHistory(data.items ?? []);
       return data.items ?? [];
@@ -534,10 +598,17 @@ export default function SketchConsole() {
     }
   };
 
-  const loadSessionDetail = async (sessionId: string, token: string, apiBaseUrl: string) => {
+  const loadSessionDetail = async (
+    sessionId: string,
+    token: string,
+    apiBaseUrl: string,
+  ) => {
     setIsLoadingSessionDetail(true);
     try {
-      const detailRes = await authFetch(`${apiBaseUrl}/api/sessions/${sessionId}`, token);
+      const detailRes = await authFetch(
+        `${apiBaseUrl}/api/sessions/${sessionId}`,
+        token,
+      );
       const detail = (await detailRes.json()) as SessionDetailResponse;
       applySessionDetail(detail);
       return detail;
@@ -554,7 +625,9 @@ export default function SketchConsole() {
   ) => {
     setIsLoadingCompare(true);
     try {
-      const compareUrl = new URL(`${apiBaseUrl}/api/sessions/${sessionId}/compare`);
+      const compareUrl = new URL(
+        `${apiBaseUrl}/api/sessions/${sessionId}/compare`,
+      );
       if (baseSessionId) {
         compareUrl.searchParams.set("baseSessionId", baseSessionId);
       }
@@ -570,10 +643,17 @@ export default function SketchConsole() {
     }
   };
 
-  const loadDeployments = async (sessionId: string, token: string, apiBaseUrl: string) => {
+  const loadDeployments = async (
+    sessionId: string,
+    token: string,
+    apiBaseUrl: string,
+  ) => {
     setIsLoadingDeployments(true);
     try {
-      const res = await authFetch(`${apiBaseUrl}/api/sessions/${sessionId}/deployments`, token);
+      const res = await authFetch(
+        `${apiBaseUrl}/api/sessions/${sessionId}/deployments`,
+        token,
+      );
       const data = (await res.json()) as SessionDeploymentListResponse;
       setDeployments(data.items ?? []);
       return data.items ?? [];
@@ -585,7 +665,10 @@ export default function SketchConsole() {
   const loadAwsDeployConfig = async (token: string, apiBaseUrl: string) => {
     setIsLoadingAwsConfig(true);
     try {
-      const res = await authFetch(`${apiBaseUrl}/api/users/aws-deploy-config`, token);
+      const res = await authFetch(
+        `${apiBaseUrl}/api/users/aws-deploy-config`,
+        token,
+      );
       const data = (await res.json()) as AwsDeployConfigResponse;
       setIsAwsConfigured(Boolean(data.configured));
       setAwsRoleArn(data.roleArn ?? "");
@@ -595,7 +678,9 @@ export default function SketchConsole() {
         setAwsConfigMessage("AWS 연결 설정이 저장되어 있습니다.");
         setAwsConfigMessageTone("success");
       } else {
-        setAwsConfigMessage("아직 AWS 연결 설정이 없습니다. Role ARN을 저장해 주세요.");
+        setAwsConfigMessage(
+          "아직 AWS 연결 설정이 없습니다. Role ARN을 저장해 주세요.",
+        );
         setAwsConfigMessageTone("info");
       }
       return data;
@@ -605,7 +690,9 @@ export default function SketchConsole() {
   };
 
   useEffect(() => {
-    const hasRunning = deployments.some((item) => item.status === "PENDING" || item.status === "RUNNING");
+    const hasRunning = deployments.some(
+      (item) => item.status === "PENDING" || item.status === "RUNNING",
+    );
     if (!hasRunning || !currentSessionId) {
       return;
     }
@@ -640,10 +727,22 @@ export default function SketchConsole() {
     setErrorRequestId(null);
 
     try {
-      const detail = await loadSessionDetail(sessionId, auth.accessToken, apiBaseUrl);
-      const history = await loadProjectSessions(detail.projectId, auth.accessToken, apiBaseUrl);
+      const detail = await loadSessionDetail(
+        sessionId,
+        auth.accessToken,
+        apiBaseUrl,
+      );
+      const history = await loadProjectSessions(
+        detail.projectId,
+        auth.accessToken,
+        apiBaseUrl,
+      );
       await loadDeployments(sessionId, auth.accessToken, apiBaseUrl);
-      if (history.some((item) => item.sessionId === sessionId && item.versionNo > 1)) {
+      if (
+        history.some(
+          (item) => item.sessionId === sessionId && item.versionNo > 1,
+        )
+      ) {
         try {
           await loadCompareSummary(sessionId, auth.accessToken, apiBaseUrl);
         } catch {
@@ -671,7 +770,11 @@ export default function SketchConsole() {
     setCompareSummary(null);
 
     try {
-      const history = await loadProjectSessions(projectId, auth.accessToken, apiBaseUrl);
+      const history = await loadProjectSessions(
+        projectId,
+        auth.accessToken,
+        apiBaseUrl,
+      );
       if (history.length === 0) {
         setCurrentSessionId(null);
         setCurrentVersionNo(null);
@@ -717,7 +820,12 @@ export default function SketchConsole() {
     setErrorMessage(null);
     setErrorRequestId(null);
     try {
-      await loadCompareSummary(compareTargetSessionId, auth.accessToken, apiBaseUrl, compareBaseSessionId);
+      await loadCompareSummary(
+        compareTargetSessionId,
+        auth.accessToken,
+        apiBaseUrl,
+        compareBaseSessionId,
+      );
     } catch (error) {
       applyUserError("비교 결과를 불러오지 못했어요.", error);
     }
@@ -736,7 +844,9 @@ export default function SketchConsole() {
       return;
     }
     if (!awsRoleArn.includes(":role/")) {
-      setErrorMessage("User ARN이 아니라 Role ARN을 입력해 주세요. (예: arn:aws:iam::123456789012:role/stc-deploy-role)");
+      setErrorMessage(
+        "User ARN이 아니라 Role ARN을 입력해 주세요. (예: arn:aws:iam::123456789012:role/stc-deploy-role)",
+      );
       setAwsConfigMessage("User ARN이 아니라 Role ARN이 필요합니다.");
       setAwsConfigMessageTone("error");
       return;
@@ -746,14 +856,18 @@ export default function SketchConsole() {
     setErrorMessage(null);
     setErrorRequestId(null);
     try {
-      await authFetch(`${apiBaseUrl}/api/users/aws-deploy-config`, auth.accessToken, {
-        method: "PUT",
-        body: JSON.stringify({
-          roleArn: awsRoleArn.trim(),
-          roleExternalId: awsRoleExternalId.trim() || null,
-          roleSessionName: awsRoleSessionName.trim() || null,
-        }),
-      });
+      await authFetch(
+        `${apiBaseUrl}/api/users/aws-deploy-config`,
+        auth.accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            roleArn: awsRoleArn.trim(),
+            roleExternalId: awsRoleExternalId.trim() || null,
+            roleSessionName: awsRoleSessionName.trim() || null,
+          }),
+        },
+      );
       await loadAwsDeployConfig(auth.accessToken, apiBaseUrl);
       setAwsConfigMessage("AWS 연결 설정 저장 완료");
       setAwsConfigMessageTone("success");
@@ -786,13 +900,17 @@ export default function SketchConsole() {
     setErrorMessage(null);
     setErrorRequestId(null);
     try {
-      await authFetch(`${apiBaseUrl}/api/sessions/${currentSessionId}/deploy`, auth.accessToken, {
-        method: "POST",
-        body: JSON.stringify({
-          awsRegion: awsDeployRegion.trim() || null,
-          simulate: simulateDeployment,
-        }),
-      });
+      await authFetch(
+        `${apiBaseUrl}/api/sessions/${currentSessionId}/deploy`,
+        auth.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            awsRegion: awsDeployRegion.trim() || null,
+            simulate: simulateDeployment,
+          }),
+        },
+      );
       await loadDeployments(currentSessionId, auth.accessToken, apiBaseUrl);
     } catch (error) {
       applyUserError("배포 실행에 실패했어요.", error);
@@ -820,15 +938,19 @@ export default function SketchConsole() {
     setErrorMessage(null);
     setErrorRequestId(null);
     try {
-      await authFetch(`${apiBaseUrl}/api/sessions/${currentSessionId}/destroy`, auth.accessToken, {
-        method: "POST",
-        body: JSON.stringify({
-          awsRegion: awsDeployRegion.trim() || null,
-          simulate: simulateDeployment,
-          confirmDestroy: true,
-          confirmationCode: `DESTROY-${currentSessionId.replace(/-/g, "").slice(-6).toUpperCase()}`,
-        }),
-      });
+      await authFetch(
+        `${apiBaseUrl}/api/sessions/${currentSessionId}/destroy`,
+        auth.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            awsRegion: awsDeployRegion.trim() || null,
+            simulate: simulateDeployment,
+            confirmDestroy: true,
+            confirmationCode: `DESTROY-${currentSessionId.replace(/-/g, "").slice(-6).toUpperCase()}`,
+          }),
+        },
+      );
       await loadDeployments(currentSessionId, auth.accessToken, apiBaseUrl);
     } catch (error) {
       applyUserError("리소스 삭제에 실패했어요.", error);
@@ -845,7 +967,9 @@ export default function SketchConsole() {
     const projectName = `repo-${fullName}`;
     const projectListRes = await authFetch(`${apiBaseUrl}/api/projects`, token);
     const projectList = (await projectListRes.json()) as ProjectListResponse;
-    const existing = (projectList.items ?? []).find((item) => item.name === projectName);
+    const existing = (projectList.items ?? []).find(
+      (item) => item.name === projectName,
+    );
     if (existing) {
       return { projectId: existing.projectId };
     }
@@ -865,7 +989,11 @@ export default function SketchConsole() {
     token: string,
     apiBaseUrl: string,
   ) => {
-    const project = await findOrCreateProjectForRepoAnalysis(analysis.fullName, token, apiBaseUrl);
+    const project = await findOrCreateProjectForRepoAnalysis(
+      analysis.fullName,
+      token,
+      apiBaseUrl,
+    );
     setCurrentProjectId(project.projectId);
     await loadProjects(token, apiBaseUrl);
 
@@ -881,25 +1009,44 @@ export default function SketchConsole() {
         }),
       },
     );
-    const session = (await sessionRes.json()) as { sessionId: string; versionNo?: number };
+    const session = (await sessionRes.json()) as {
+      sessionId: string;
+      versionNo?: number;
+    };
     setCurrentSessionId(session.sessionId);
     setCurrentVersionNo(session.versionNo ?? null);
 
-    await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/architecture`, token, {
-      method: "POST",
-      body: JSON.stringify({
-        schemaVersion: "v1",
-        architectureJson: analysis.architectureJson,
-      }),
-    });
-    await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/terraform`, token, {
-      method: "POST",
-    });
-    await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/cost`, token, {
-      method: "POST",
-    });
+    await authFetch(
+      `${apiBaseUrl}/api/sessions/${session.sessionId}/architecture`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          schemaVersion: "v1",
+          architectureJson: analysis.architectureJson,
+        }),
+      },
+    );
+    await authFetch(
+      `${apiBaseUrl}/api/sessions/${session.sessionId}/terraform`,
+      token,
+      {
+        method: "POST",
+      },
+    );
+    await authFetch(
+      `${apiBaseUrl}/api/sessions/${session.sessionId}/cost`,
+      token,
+      {
+        method: "POST",
+      },
+    );
 
-    const detail = await loadSessionDetail(session.sessionId, token, apiBaseUrl);
+    const detail = await loadSessionDetail(
+      session.sessionId,
+      token,
+      apiBaseUrl,
+    );
     await loadProjectSessions(project.projectId, token, apiBaseUrl);
     setCompareSummary(null);
     return detail;
@@ -968,13 +1115,17 @@ export default function SketchConsole() {
         imageUrl = up.url;
       }
 
-      const projectRes = await authFetch(`${apiBaseUrl}/api/projects`, auth.accessToken, {
-        method: "POST",
-        body: JSON.stringify({
-          name: `project-${Date.now()}`,
-          description: payload.description || "dashboard generated project",
-        }),
-      });
+      const projectRes = await authFetch(
+        `${apiBaseUrl}/api/projects`,
+        auth.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: `project-${Date.now()}`,
+            description: payload.description || "dashboard generated project",
+          }),
+        },
+      );
       const project = (await projectRes.json()) as { projectId: string };
       setCurrentProjectId(project.projectId);
       await loadProjects(auth.accessToken, apiBaseUrl);
@@ -1001,16 +1152,20 @@ export default function SketchConsole() {
       setCurrentSessionId(session.sessionId);
       setCurrentVersionNo(null);
 
-      const analyzeRes = await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/analyze`, auth.accessToken, {
-        method: "POST",
-        body: JSON.stringify({
-          inputText: payload.description?.trim()
-            ? payload.description
-            : `Analyze the uploaded architecture diagram and infer AWS resources and counts precisely.`,
-          inputType: payload.uploadedFile ? "sketch" : "text",
-          inputImageDataUrl: imageDataUrl,
-        }),
-      });
+      const analyzeRes = await authFetch(
+        `${apiBaseUrl}/api/sessions/${session.sessionId}/analyze`,
+        auth.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            inputText: payload.description?.trim()
+              ? payload.description
+              : `Analyze the uploaded architecture diagram and infer AWS resources and counts precisely.`,
+            inputType: payload.uploadedFile ? "sketch" : "text",
+            inputImageDataUrl: imageDataUrl,
+          }),
+        },
+      );
       const analyze = (await analyzeRes.json()) as {
         status: "generated" | "failed";
         parsedJson?: Record<string, unknown>;
@@ -1035,18 +1190,37 @@ export default function SketchConsole() {
         throw new Error(`${code}${analyze.error?.message ?? "AI 분석 실패"}`);
       }
 
-      await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/terraform`, auth.accessToken, {
-        method: "POST",
-      });
-      await authFetch(`${apiBaseUrl}/api/sessions/${session.sessionId}/cost`, auth.accessToken, {
-        method: "POST",
-      });
+      await authFetch(
+        `${apiBaseUrl}/api/sessions/${session.sessionId}/terraform`,
+        auth.accessToken,
+        {
+          method: "POST",
+        },
+      );
+      await authFetch(
+        `${apiBaseUrl}/api/sessions/${session.sessionId}/cost`,
+        auth.accessToken,
+        {
+          method: "POST",
+        },
+      );
 
-      const detail = await loadSessionDetail(session.sessionId, auth.accessToken, apiBaseUrl);
-      const history = await loadProjectSessions(project.projectId, auth.accessToken, apiBaseUrl);
+      const detail = await loadSessionDetail(
+        session.sessionId,
+        auth.accessToken,
+        apiBaseUrl,
+      );
+      const history = await loadProjectSessions(
+        project.projectId,
+        auth.accessToken,
+        apiBaseUrl,
+      );
       await loadDeployments(session.sessionId, auth.accessToken, apiBaseUrl);
       setCompareTargetSessionId(session.sessionId);
-      setCompareBaseSessionId(history.find((item) => item.sessionId !== session.sessionId)?.sessionId ?? null);
+      setCompareBaseSessionId(
+        history.find((item) => item.sessionId !== session.sessionId)
+          ?.sessionId ?? null,
+      );
       setCompareSummary(null);
 
       console.groupCollapsed("[STC] Analysis Result");
@@ -1057,7 +1231,9 @@ export default function SketchConsole() {
       console.info("costBreakdown", detail.cost?.costBreakdownJson);
       console.groupEnd();
 
-      setArchitectureJson(detail.architecture?.architectureJson ?? analyze.parsedJson ?? null);
+      setArchitectureJson(
+        detail.architecture?.architectureJson ?? analyze.parsedJson ?? null,
+      );
       setAnalysisCoverage(
         typeof analyze.analysisMeta?.requirementCoverage === "number"
           ? analyze.analysisMeta.requirementCoverage
@@ -1100,7 +1276,10 @@ export default function SketchConsole() {
     setErrorRequestId(null);
     try {
       await loadGitHubConnectionStatus();
-      const res = await authFetch(`${apiBaseUrl}/api/github/repos`, auth.accessToken);
+      const res = await authFetch(
+        `${apiBaseUrl}/api/github/repos`,
+        auth.accessToken,
+      );
       const data = (await res.json()) as GitHubRepoListResponse;
       setGithubRepos(data.repos ?? []);
       if ((data.repos?.length ?? 0) > 0) {
@@ -1130,10 +1309,14 @@ export default function SketchConsole() {
     setErrorRequestId(null);
     setCompareSummary(null);
     try {
-      const res = await authFetch(`${apiBaseUrl}/api/github/repo-analysis`, auth.accessToken, {
-        method: "POST",
-        body: JSON.stringify({ fullName, forceRefresh }),
-      });
+      const res = await authFetch(
+        `${apiBaseUrl}/api/github/repo-analysis`,
+        auth.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({ fullName, forceRefresh }),
+        },
+      );
       const data = (await res.json()) as GitHubRepoAnalyzeResponse;
       setRepoAnalysis(data);
       await persistRepoAnalysisAsSession(data, auth.accessToken, apiBaseUrl);
@@ -1174,7 +1357,9 @@ export default function SketchConsole() {
   const analyzeRepoFromUrl = async (forceRefresh = false) => {
     const fullName = parseGitHubRepoInput(repoUrlInput);
     if (!fullName) {
-      setErrorMessage("GitHub 저장소 주소 또는 owner/repo 형식을 입력해 주세요.");
+      setErrorMessage(
+        "GitHub 저장소 주소 또는 owner/repo 형식을 입력해 주세요.",
+      );
       return;
     }
 
@@ -1188,7 +1373,10 @@ export default function SketchConsole() {
     const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
     setIsLoadingGitHubStatus(true);
     try {
-      const res = await authFetch(`${apiBaseUrl}/api/github/status`, auth.accessToken);
+      const res = await authFetch(
+        `${apiBaseUrl}/api/github/status`,
+        auth.accessToken,
+      );
       const data = (await res.json()) as GitHubConnectionStatus;
       setGithubStatus(data);
     } catch {
@@ -1206,7 +1394,10 @@ export default function SketchConsole() {
     setErrorMessage(null);
     setErrorRequestId(null);
     try {
-      const res = await authFetch(`${apiBaseUrl}/api/ops/readiness`, auth.accessToken);
+      const res = await authFetch(
+        `${apiBaseUrl}/api/ops/readiness`,
+        auth.accessToken,
+      );
       const data = (await res.json()) as RepoReadiness;
       setReadiness(data);
     } catch (error) {
@@ -1235,7 +1426,10 @@ export default function SketchConsole() {
       `${apiBaseUrl}/api/ops/repo-analysis-feedback?fullName=${encodeURIComponent(fullName)}`,
       auth.accessToken,
     );
-    const data = (await res.json()) as { fullName: string; feedback: RepoAnalysisFeedback | null };
+    const data = (await res.json()) as {
+      fullName: string;
+      feedback: RepoAnalysisFeedback | null;
+    };
     setRepoFeedback(data.feedback ?? null);
   };
 
@@ -1250,14 +1444,18 @@ export default function SketchConsole() {
     setErrorMessage(null);
     setErrorRequestId(null);
     try {
-      const res = await authFetch(`${apiBaseUrl}/api/ops/repo-analysis-feedback`, auth.accessToken, {
-        method: "POST",
-        body: JSON.stringify({
-          fullName: repoAnalysis.fullName,
-          verdict,
-          note: verdict === "HOLD" ? "추가 검토 필요" : "배포 진행 가능",
-        }),
-      });
+      const res = await authFetch(
+        `${apiBaseUrl}/api/ops/repo-analysis-feedback`,
+        auth.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            fullName: repoAnalysis.fullName,
+            verdict,
+            note: verdict === "HOLD" ? "추가 검토 필요" : "배포 진행 가능",
+          }),
+        },
+      );
       const data = (await res.json()) as {
         fullName: string;
         verdict: "APPROVE" | "HOLD";
@@ -1287,7 +1485,10 @@ export default function SketchConsole() {
     setErrorMessage(null);
     setErrorRequestId(null);
     try {
-      const res = await authFetch(`${apiBaseUrl}/api/ops/repo-analysis-health`, auth.accessToken);
+      const res = await authFetch(
+        `${apiBaseUrl}/api/ops/repo-analysis-health`,
+        auth.accessToken,
+      );
       const data = (await res.json()) as RepoAnalysisHealth;
       setAnalysisHealth(data);
     } catch (error) {
@@ -1363,7 +1564,10 @@ export default function SketchConsole() {
 
   return (
     <>
-      <PageMeta title="Console | Sketch-to-Cloud" description="Sketch-to-Cloud 메인 대시보드" />
+      <PageMeta
+        title="Console | Sketch-to-Cloud"
+        description="Sketch-to-Cloud 메인 대시보드"
+      />
       <div className="min-h-screen bg-background">
         <Header generationStatus={generationStatus} />
 
@@ -1373,7 +1577,9 @@ export default function SketchConsole() {
               {errorMessage}
               {errorRequestId ? (
                 <details className="mt-2 text-xs text-red-600">
-                  <summary className="cursor-pointer">문제가 계속되면 이 코드로 문의하세요</summary>
+                  <summary className="cursor-pointer">
+                    문제가 계속되면 이 코드로 문의하세요
+                  </summary>
                   ?? ??: {errorRequestId}
                 </details>
               ) : null}
@@ -1382,15 +1588,19 @@ export default function SketchConsole() {
           <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
             <Tabs
               value={repoImportTab}
-              onValueChange={(value) => setRepoImportTab(value as RepoImportTab)}
+              onValueChange={(value) =>
+                setRepoImportTab(value as RepoImportTab)
+              }
               className="gap-4"
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">레포지토리 가져오기</p>
+                  <p className="text-sm font-semibold text-slate-900">
+                    레포지토리 가져오기
+                  </p>
                   <p className="mt-1 text-xs text-slate-600">
-                    GitHub 계정이면 내 저장소와 주소 입력을 모두 사용할 수 있고, 그 외 계정은 주소 입력으로
-                    공개 저장소를 불러올 수 있어요.
+                    GitHub 계정이면 내 저장소와 주소 입력을 모두 사용할 수 있고,
+                    그 외 계정은 주소 입력으로 공개 저장소를 불러올 수 있어요.
                   </p>
                 </div>
                 <TabsList className="grid w-full max-w-md grid-cols-2">
@@ -1408,7 +1618,9 @@ export default function SketchConsole() {
                       disabled={isLoadingRepos}
                       className="h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-60"
                     >
-                      {isLoadingRepos ? "레포 불러오는 중..." : "내 GitHub 레포 불러오기"}
+                      {isLoadingRepos
+                        ? "레포 불러오는 중..."
+                        : "내 GitHub 레포 불러오기"}
                     </button>
                     <select
                       value={selectedRepo}
@@ -1432,7 +1644,9 @@ export default function SketchConsole() {
                       disabled={isAnalyzingRepo || !selectedRepo}
                       className="h-10 rounded-md bg-[#FF9900] px-4 text-sm font-medium text-white disabled:opacity-60"
                     >
-                      {isAnalyzingRepo ? "AWS 분석 중..." : "선택 레포 AWS 분석"}
+                      {isAnalyzingRepo
+                        ? "AWS 분석 중..."
+                        : "선택 레포 AWS 분석"}
                     </button>
                     <button
                       type="button"
@@ -1445,10 +1659,13 @@ export default function SketchConsole() {
                   </div>
                 ) : (
                   <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-5">
-                    <p className="text-sm font-semibold text-slate-900">GitHub 계정 연결 시 사용 가능</p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      GitHub 계정 연결 시 사용 가능
+                    </p>
                     <p className="mt-1 text-sm text-slate-600">
-                      GitHub 계정으로 로그인하면 내 저장소 목록을 바로 불러올 수 있어요. 지금은 아래
-                      `저장소 주소 입력` 탭에서 공개 저장소 주소를 직접 입력해 사용할 수 있습니다.
+                      GitHub 계정으로 로그인하면 내 저장소 목록을 바로 불러올 수
+                      있어요. 지금은 아래 `저장소 주소 입력` 탭에서 공개 저장소
+                      주소를 직접 입력해 사용할 수 있습니다.
                     </p>
                   </div>
                 )}
@@ -1481,7 +1698,8 @@ export default function SketchConsole() {
                   </button>
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
-                  GitHub 계정이 아니어도 공개 저장소 주소를 입력해 불러올 수 있어요.
+                  GitHub 계정이 아니어도 공개 저장소 주소를 입력해 불러올 수
+                  있어요.
                 </p>
               </TabsContent>
             </Tabs>
@@ -1515,15 +1733,19 @@ export default function SketchConsole() {
               <div className="mt-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700">
                 <p className="font-semibold text-slate-900">
                   GitHub 연결 상태:{" "}
-                  {githubStatus.tokenValid && githubStatus.githubApiReachable ? "정상" : "점검 필요"}
+                  {githubStatus.tokenValid && githubStatus.githubApiReachable
+                    ? "정상"
+                    : "점검 필요"}
                 </p>
                 <p className="mt-1">
-                  OAuth 설정={String(githubStatus.oauthConfigured)} / 토큰={String(githubStatus.tokenPresent)} /
-                  유효={String(githubStatus.tokenValid)}
+                  OAuth 설정={String(githubStatus.oauthConfigured)} / 토큰=
+                  {String(githubStatus.tokenPresent)} / 유효=
+                  {String(githubStatus.tokenValid)}
                 </p>
                 <p className="mt-1">
-                  계정={githubStatus.accountLogin ?? "-"} / private 접근={String(githubStatus.privateRepoAccess)} /
-                  확인 레포수={githubStatus.estimatedRepoCount ?? 0}
+                  계정={githubStatus.accountLogin ?? "-"} / private 접근=
+                  {String(githubStatus.privateRepoAccess)} / 확인 레포수=
+                  {githubStatus.estimatedRepoCount ?? 0}
                 </p>
                 {githubStatus.issues.length > 0 ? (
                   <ul className="mt-2 list-disc pl-5">
@@ -1542,7 +1764,8 @@ export default function SketchConsole() {
                 <ul className="mt-2 list-disc pl-5">
                   {readiness.checklist.map((item) => (
                     <li key={item.name}>
-                      {item.name}: {item.ok ? "정상" : "개선 필요"} - {item.detail}
+                      {item.name}: {item.ok ? "정상" : "개선 필요"} -{" "}
+                      {item.detail}
                     </li>
                   ))}
                 </ul>
@@ -1551,20 +1774,31 @@ export default function SketchConsole() {
             {analysisHealth ? (
               <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                 <p className="font-semibold text-slate-900">
-                  AI 전용 정책: {analysisHealth.policy.ready ? "정상" : "주의 필요"}
+                  AI 전용 정책:{" "}
+                  {analysisHealth.policy.ready ? "정상" : "주의 필요"}
                 </p>
                 <p className="mt-1">
-                  Bedrock={String(analysisHealth.policy.bedrockEnabled)} / Strict=
+                  Bedrock={String(analysisHealth.policy.bedrockEnabled)} /
+                  Strict=
                   {String(analysisHealth.policy.bedrockStrictMode)} / Fallback=
                   {String(analysisHealth.policy.bedrockFallbackEnabled)}
                 </p>
                 <p className="mt-1">
-                  캐시: size {analysisHealth.cache.size}, hits {analysisHealth.cache.hits}, misses{" "}
+                  캐시: size {analysisHealth.cache.size}, hits{" "}
+                  {analysisHealth.cache.hits}, misses{" "}
                   {analysisHealth.cache.misses}
                 </p>
-                <p className="mt-1">최근 실패: {analysisHealth.failures.total}건</p>
-                <StageBars title="실패 Stage 분포" data={analysisHealth.failures.byStage ?? {}} />
-                <StageBars title="실패 유형 분포" data={analysisHealth.failures.byType ?? {}} />
+                <p className="mt-1">
+                  최근 실패: {analysisHealth.failures.total}건
+                </p>
+                <StageBars
+                  title="실패 Stage 분포"
+                  data={analysisHealth.failures.byStage ?? {}}
+                />
+                <StageBars
+                  title="실패 유형 분포"
+                  data={analysisHealth.failures.byType ?? {}}
+                />
                 {analysisHealth.recommendations.length > 0 ? (
                   <ul className="mt-2 list-disc pl-5">
                     {analysisHealth.recommendations.map((item) => (
@@ -1576,10 +1810,15 @@ export default function SketchConsole() {
             ) : null}
             {repoAnalysis ? (
               <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">{repoAnalysis.fullName}</p>
-                <p className="mt-1 text-sm text-slate-700">{simplifyAwsWords(repoAnalysis.summary)}</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {repoAnalysis.fullName}
+                </p>
+                <p className="mt-1 text-sm text-slate-700">
+                  {simplifyAwsWords(repoAnalysis.summary)}
+                </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  분석 결과를 아래 기존 탭(아키텍처/테라폼/비용)에 자동 반영했습니다.
+                  분석 결과를 아래 기존 탭(아키텍처/테라폼/비용)에 자동
+                  반영했습니다.
                 </p>
                 <details className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2">
                   <summary className="cursor-pointer text-sm font-semibold text-slate-800">
@@ -1587,17 +1826,23 @@ export default function SketchConsole() {
                   </summary>
                   <div className="mt-3 text-xs text-slate-700">
                     <p>
-                      신뢰도: <span className="font-semibold">{repoAnalysis.confidenceLabel}</span>{" "}
+                      신뢰도:{" "}
+                      <span className="font-semibold">
+                        {repoAnalysis.confidenceLabel}
+                      </span>{" "}
                       ({Math.round(repoAnalysis.confidenceScore * 100)}%)
                     </p>
-                    <p className="mt-1">분석 엔진: {repoAnalysis.analysisProvider}</p>
+                    <p className="mt-1">
+                      분석 엔진: {repoAnalysis.analysisProvider}
+                    </p>
                     <p className="mt-1">
                       분석 모드: 정밀 분석
                       {repoAnalysis.cacheHit ? " (캐시 결과)" : ""}
                     </p>
                     {repoAnalysis.evidenceFiles.length > 0 ? (
                       <p className="mt-1 break-all">
-                        근거 파일: {repoAnalysis.evidenceFiles.slice(0, 8).join(", ")}
+                        근거 파일:{" "}
+                        {repoAnalysis.evidenceFiles.slice(0, 8).join(", ")}
                       </p>
                     ) : null}
                   </div>
@@ -1615,7 +1860,9 @@ export default function SketchConsole() {
                   ) : null}
                   {repoAnalysis.improvementActions.length > 0 ? (
                     <>
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">정확도 높이기</p>
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        정확도 높이기
+                      </p>
                       <ul className="mt-1 list-disc pl-5 text-sm text-slate-800">
                         {repoAnalysis.improvementActions.map((action) => (
                           <li key={action}>{action}</li>
@@ -1635,9 +1882,15 @@ export default function SketchConsole() {
                       </ul>
                     </>
                   ) : null}
-                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">추천 구성</p>
-                  <p className="mt-1 text-sm text-slate-800">{repoAnalysis.recommendedStack.join(", ")}</p>
-                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">다음에 할 일</p>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    추천 구성
+                  </p>
+                  <p className="mt-1 text-sm text-slate-800">
+                    {repoAnalysis.recommendedStack.join(", ")}
+                  </p>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    다음에 할 일
+                  </p>
                   <ul className="mt-1 list-disc pl-5 text-sm text-slate-800">
                     {repoAnalysis.deploymentSteps.map((step) => (
                       <li key={step}>{simplifyAwsWords(step)}</li>
@@ -1645,7 +1898,9 @@ export default function SketchConsole() {
                   </ul>
                   {repoAnalysis.risks.length > 0 ? (
                     <>
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">주의할 점</p>
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        주의할 점
+                      </p>
                       <ul className="mt-1 list-disc pl-5 text-sm text-rose-700">
                         {repoAnalysis.risks.map((risk) => (
                           <li key={risk}>{simplifyAwsWords(risk)}</li>
@@ -1655,9 +1910,15 @@ export default function SketchConsole() {
                   ) : null}
                   {repoAnalysis.cost ? (
                     <>
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">예상 월 비용</p>
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        예상 월 비용
+                      </p>
                       <p className="mt-1 text-sm text-slate-800">
-                        {(repoAnalysis.cost.monthlyTotal ?? repoAnalysis.cost.monthly_total ?? 0).toLocaleString()}{" "}
+                        {(
+                          repoAnalysis.cost.monthlyTotal ??
+                          repoAnalysis.cost.monthly_total ??
+                          0
+                        ).toLocaleString()}{" "}
                         {repoAnalysis.cost.currency ?? "USD"} / month
                       </p>
                     </>
@@ -1710,9 +1971,12 @@ export default function SketchConsole() {
           <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-900">프로젝트 탐색</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  프로젝트 탐색
+                </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  이전에 생성한 프로젝트를 다시 열고 그 안의 세션 버전 이력을 이어서 확인할 수 있습니다.
+                  이전에 생성한 프로젝트를 다시 열고 그 안의 세션 버전 이력을
+                  이어서 확인할 수 있습니다.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1730,13 +1994,18 @@ export default function SketchConsole() {
                     try {
                       await loadProjects(auth.accessToken, apiBaseUrl);
                     } catch (error) {
-                      applyUserError("프로젝트 목록을 불러오지 못했어요.", error);
+                      applyUserError(
+                        "프로젝트 목록을 불러오지 못했어요.",
+                        error,
+                      );
                     }
                   }}
                   disabled={isLoadingProjects}
                   className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
                 >
-                  {isLoadingProjects ? "프로젝트 불러오는 중..." : "프로젝트 목록 새로고침"}
+                  {isLoadingProjects
+                    ? "프로젝트 불러오는 중..."
+                    : "프로젝트 목록 새로고침"}
                 </button>
               </div>
             </div>
@@ -1744,7 +2013,8 @@ export default function SketchConsole() {
             <div className="mt-3 flex flex-wrap gap-2">
               {projects.length === 0 ? (
                 <p className="text-xs text-slate-500">
-                  아직 불러온 프로젝트가 없습니다. 위 버튼을 눌러 기존 프로젝트 목록을 가져와 보세요.
+                  아직 불러온 프로젝트가 없습니다. 위 버튼을 눌러 기존 프로젝트
+                  목록을 가져와 보세요.
                 </p>
               ) : (
                 projects.map((project) => (
@@ -1761,10 +2031,22 @@ export default function SketchConsole() {
                     }`}
                   >
                     <div className="font-semibold">{project.name}</div>
-                    <div className={currentProjectId === project.projectId ? "text-slate-200" : "text-slate-500"}>
+                    <div
+                      className={
+                        currentProjectId === project.projectId
+                          ? "text-slate-200"
+                          : "text-slate-500"
+                      }
+                    >
                       {project.description || "설명 없음"}
                     </div>
-                    <div className={currentProjectId === project.projectId ? "mt-1 text-[10px] text-slate-300" : "mt-1 text-[10px] text-slate-400"}>
+                    <div
+                      className={
+                        currentProjectId === project.projectId
+                          ? "mt-1 text-[10px] text-slate-300"
+                          : "mt-1 text-[10px] text-slate-400"
+                      }
+                    >
                       updated {project.updatedAt.slice(0, 10)}
                     </div>
                   </button>
@@ -1776,14 +2058,21 @@ export default function SketchConsole() {
           <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-900">세션 이력</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  세션 이력
+                </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  현재 프로젝트의 버전 흐름을 확인하고 원하는 두 버전을 골라 비교할 수 있습니다.
+                  현재 프로젝트의 버전 흐름을 확인하고 원하는 두 버전을 골라
+                  비교할 수 있습니다.
                 </p>
                 {currentProjectId ? (
-                  <p className="mt-1 text-[11px] text-slate-400">projectId: {currentProjectId}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    projectId: {currentProjectId}
+                  </p>
                 ) : (
-                  <p className="mt-1 text-[11px] text-slate-400">생성을 한 번 실행하면 여기서 v1, v2 이력이 보입니다.</p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    생성을 한 번 실행하면 여기서 v1, v2 이력이 보입니다.
+                  </p>
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1800,7 +2089,9 @@ export default function SketchConsole() {
                   }
                   className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
                 >
-                  {isLoadingCompare ? "비교 불러오는 중..." : "선택 버전끼리 비교"}
+                  {isLoadingCompare
+                    ? "비교 불러오는 중..."
+                    : "선택 버전끼리 비교"}
                 </button>
               </div>
             </div>
@@ -1809,7 +2100,9 @@ export default function SketchConsole() {
               <span>
                 기준 버전:{" "}
                 <strong className="text-slate-700">
-                  {sessionHistory.find((item) => item.sessionId === compareBaseSessionId)?.versionNo
+                  {sessionHistory.find(
+                    (item) => item.sessionId === compareBaseSessionId,
+                  )?.versionNo
                     ? `v${sessionHistory.find((item) => item.sessionId === compareBaseSessionId)?.versionNo}`
                     : "-"}
                 </strong>
@@ -1817,7 +2110,9 @@ export default function SketchConsole() {
               <span>
                 비교 버전:{" "}
                 <strong className="text-slate-700">
-                  {sessionHistory.find((item) => item.sessionId === compareTargetSessionId)?.versionNo
+                  {sessionHistory.find(
+                    (item) => item.sessionId === compareTargetSessionId,
+                  )?.versionNo
                     ? `v${sessionHistory.find((item) => item.sessionId === compareTargetSessionId)?.versionNo}`
                     : "-"}
                 </strong>
@@ -1826,9 +2121,13 @@ export default function SketchConsole() {
 
             <div className="mt-3 flex flex-wrap gap-2">
               {isLoadingSessionHistory ? (
-                <p className="text-xs text-slate-500">세션 목록을 불러오는 중입니다.</p>
+                <p className="text-xs text-slate-500">
+                  세션 목록을 불러오는 중입니다.
+                </p>
               ) : sessionHistory.length === 0 ? (
-                <p className="text-xs text-slate-500">아직 저장된 세션 이력이 없습니다.</p>
+                <p className="text-xs text-slate-500">
+                  아직 저장된 세션 이력이 없습니다.
+                </p>
               ) : (
                 sessionHistory.map((item) => (
                   <button
@@ -1847,7 +2146,13 @@ export default function SketchConsole() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold">v{item.versionNo}</div>
-                        <div className={currentSessionId === item.sessionId ? "text-slate-200" : "text-slate-500"}>
+                        <div
+                          className={
+                            currentSessionId === item.sessionId
+                              ? "text-slate-200"
+                              : "text-slate-500"
+                          }
+                        >
                           {item.status}
                         </div>
                       </div>
@@ -1904,7 +2209,8 @@ export default function SketchConsole() {
             {compareSummary ? (
               <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <p className="text-sm font-semibold text-slate-900">
-                  비교 요약: v{compareSummary.baseSession.versionNo} {"->"} v{compareSummary.targetSession.versionNo}
+                  비교 요약: v{compareSummary.baseSession.versionNo} {"->"} v
+                  {compareSummary.targetSession.versionNo}
                 </p>
                 <div className="mt-2 grid gap-2 md:grid-cols-3">
                   <div className="rounded-md border border-slate-200 bg-white p-3">
@@ -1922,20 +2228,26 @@ export default function SketchConsole() {
                   <div className="rounded-md border border-slate-200 bg-white p-3">
                     <p className="text-[11px] text-slate-500">월 비용 차이</p>
                     <p className="mt-1 text-lg font-semibold text-slate-900">
-                      {formatCurrencyDelta(compareSummary.costDiff.monthlyTotal.delta)}
+                      {formatCurrencyDelta(
+                        compareSummary.costDiff.monthlyTotal.delta,
+                      )}
                     </p>
                   </div>
                 </div>
                 <div className="mt-3 grid gap-3 xl:grid-cols-[1.2fr_1fr]">
                   <div className="rounded-md border border-slate-200 bg-white p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold text-slate-700">JSON diff 상세</p>
+                      <p className="text-xs font-semibold text-slate-700">
+                        JSON diff 상세
+                      </p>
                       <span className="text-[11px] text-slate-500">
                         {compareSummary.jsonDiff.length}개 변경
                       </span>
                     </div>
                     {compareSummary.jsonDiff.length === 0 ? (
-                      <p className="mt-2 text-xs text-slate-500">아키텍처 JSON 변경이 없습니다.</p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        아키텍처 JSON 변경이 없습니다.
+                      </p>
                     ) : (
                       <div className="mt-2 space-y-2">
                         {compareSummary.jsonDiff.map((item) => (
@@ -1947,17 +2259,23 @@ export default function SketchConsole() {
                               <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] text-white">
                                 {item.changeType}
                               </span>
-                              <code className="text-[11px] text-slate-700">{item.path}</code>
+                              <code className="text-[11px] text-slate-700">
+                                {item.path}
+                              </code>
                             </div>
                             <div className="mt-2 grid gap-2 md:grid-cols-2">
                               <div className="rounded border border-slate-200 bg-white p-2">
-                                <p className="text-[10px] font-semibold text-slate-500">기준 버전</p>
+                                <p className="text-[10px] font-semibold text-slate-500">
+                                  기준 버전
+                                </p>
                                 <p className="mt-1 break-all text-[11px] text-slate-700">
                                   {previewValue(item.before)}
                                 </p>
                               </div>
                               <div className="rounded border border-slate-200 bg-white p-2">
-                                <p className="text-[10px] font-semibold text-slate-500">비교 버전</p>
+                                <p className="text-[10px] font-semibold text-slate-500">
+                                  비교 버전
+                                </p>
                                 <p className="mt-1 break-all text-[11px] text-slate-700">
                                   {previewValue(item.after)}
                                 </p>
@@ -1972,9 +2290,13 @@ export default function SketchConsole() {
                   <div className="space-y-3">
                     <div className="rounded-md border border-slate-200 bg-white p-3">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs font-semibold text-slate-700">Terraform diff</p>
+                        <p className="text-xs font-semibold text-slate-700">
+                          Terraform diff
+                        </p>
                         <span className="text-[11px] text-slate-500">
-                          {compareSummary.terraformDiff.changed ? "변경 있음" : "변경 없음"}
+                          {compareSummary.terraformDiff.changed
+                            ? "변경 있음"
+                            : "변경 없음"}
                         </span>
                       </div>
                       {compareSummary.terraformDiff.diff ? (
@@ -1982,79 +2304,127 @@ export default function SketchConsole() {
                           <code>{compareSummary.terraformDiff.diff}</code>
                         </pre>
                       ) : (
-                        <p className="mt-2 text-xs text-slate-500">Terraform 코드 차이가 없습니다.</p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Terraform 코드 차이가 없습니다.
+                        </p>
                       )}
                     </div>
 
                     <div className="rounded-md border border-slate-200 bg-white p-3">
-                      <p className="text-xs font-semibold text-slate-700">비용 비교 상세</p>
+                      <p className="text-xs font-semibold text-slate-700">
+                        비용 비교 상세
+                      </p>
                       <div className="mt-2 grid gap-2 md:grid-cols-3">
                         <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                          <p className="text-[10px] font-semibold text-slate-500">기준 월 비용</p>
+                          <p className="text-[10px] font-semibold text-slate-500">
+                            기준 월 비용
+                          </p>
                           <p className="mt-1 text-sm font-semibold text-slate-900">
-                            {formatCurrencyDelta(compareSummary.costDiff.monthlyTotal.before)}
+                            {formatCurrencyDelta(
+                              compareSummary.costDiff.monthlyTotal.before,
+                            )}
                           </p>
                         </div>
                         <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                          <p className="text-[10px] font-semibold text-slate-500">비교 월 비용</p>
+                          <p className="text-[10px] font-semibold text-slate-500">
+                            비교 월 비용
+                          </p>
                           <p className="mt-1 text-sm font-semibold text-slate-900">
-                            {formatCurrencyDelta(compareSummary.costDiff.monthlyTotal.after)}
+                            {formatCurrencyDelta(
+                              compareSummary.costDiff.monthlyTotal.after,
+                            )}
                           </p>
                         </div>
                         <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                          <p className="text-[10px] font-semibold text-slate-500">증감</p>
+                          <p className="text-[10px] font-semibold text-slate-500">
+                            증감
+                          </p>
                           <p className="mt-1 text-sm font-semibold text-slate-900">
-                            {formatCurrencyDelta(compareSummary.costDiff.monthlyTotal.delta)}
+                            {formatCurrencyDelta(
+                              compareSummary.costDiff.monthlyTotal.delta,
+                            )}
                           </p>
                         </div>
                       </div>
 
                       {compareSummary.costDiff.breakdown &&
-                      Object.keys(compareSummary.costDiff.breakdown).length > 0 ? (
+                      Object.keys(compareSummary.costDiff.breakdown).length >
+                        0 ? (
                         <div className="mt-3 overflow-x-auto">
                           <table className="min-w-full text-left text-[11px] text-slate-700">
                             <thead>
                               <tr className="border-b border-slate-200 text-slate-500">
-                                <th className="py-2 pr-3 font-semibold">항목</th>
-                                <th className="py-2 pr-3 font-semibold">기준</th>
-                                <th className="py-2 pr-3 font-semibold">비교</th>
+                                <th className="py-2 pr-3 font-semibold">
+                                  항목
+                                </th>
+                                <th className="py-2 pr-3 font-semibold">
+                                  기준
+                                </th>
+                                <th className="py-2 pr-3 font-semibold">
+                                  비교
+                                </th>
                                 <th className="py-2 font-semibold">증감</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {Object.entries(compareSummary.costDiff.breakdown).map(([key, delta]) => (
-                                <tr key={key} className="border-b border-slate-100">
-                                  <td className="py-2 pr-3 font-medium text-slate-800">{key}</td>
-                                  <td className="py-2 pr-3">{formatCurrencyDelta(delta.before)}</td>
-                                  <td className="py-2 pr-3">{formatCurrencyDelta(delta.after)}</td>
-                                  <td className="py-2">{formatCurrencyDelta(delta.delta)}</td>
+                              {Object.entries(
+                                compareSummary.costDiff.breakdown,
+                              ).map(([key, delta]) => (
+                                <tr
+                                  key={key}
+                                  className="border-b border-slate-100"
+                                >
+                                  <td className="py-2 pr-3 font-medium text-slate-800">
+                                    {key}
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    {formatCurrencyDelta(delta.before)}
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    {formatCurrencyDelta(delta.after)}
+                                  </td>
+                                  <td className="py-2">
+                                    {formatCurrencyDelta(delta.delta)}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                         </div>
                       ) : (
-                        <p className="mt-3 text-xs text-slate-500">비용 breakdown 변경 정보가 없습니다.</p>
+                        <p className="mt-3 text-xs text-slate-500">
+                          비용 breakdown 변경 정보가 없습니다.
+                        </p>
                       )}
 
                       {compareSummary.costDiff.assumptionsChanged &&
                       compareSummary.costDiff.assumptionsChanged.length > 0 ? (
                         <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-[11px] font-semibold text-slate-700">비용 가정 변경</p>
+                          <p className="text-[11px] font-semibold text-slate-700">
+                            비용 가정 변경
+                          </p>
                           <div className="mt-2 space-y-2">
-                            {compareSummary.costDiff.assumptionsChanged.map((item) => (
-                              <div key={`${item.path}-${item.changeType}`} className="rounded bg-white p-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
-                                    {item.changeType}
-                                  </span>
-                                  <code className="text-[11px] text-slate-700">{item.path}</code>
+                            {compareSummary.costDiff.assumptionsChanged.map(
+                              (item) => (
+                                <div
+                                  key={`${item.path}-${item.changeType}`}
+                                  className="rounded bg-white p-2"
+                                >
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
+                                      {item.changeType}
+                                    </span>
+                                    <code className="text-[11px] text-slate-700">
+                                      {item.path}
+                                    </code>
+                                  </div>
+                                  <p className="mt-1 text-[11px] text-slate-600">
+                                    {previewValue(item.before)} {"->"}{" "}
+                                    {previewValue(item.after)}
+                                  </p>
                                 </div>
-                                <p className="mt-1 text-[11px] text-slate-600">
-                                  {previewValue(item.before)} {"->"} {previewValue(item.after)}
-                                </p>
-                              </div>
-                            ))}
+                              ),
+                            )}
                           </div>
                         </div>
                       ) : null}
@@ -2062,15 +2432,19 @@ export default function SketchConsole() {
                   </div>
                 </div>
               </div>
-            ) : compareBaseSessionId && compareTargetSessionId && compareBaseSessionId === compareTargetSessionId ? (
+            ) : compareBaseSessionId &&
+              compareTargetSessionId &&
+              compareBaseSessionId === compareTargetSessionId ? (
               <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
                 서로 다른 두 버전을 골라 비교해 주세요.
               </div>
             ) : !compareBaseSessionId || !compareTargetSessionId ? (
               <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-                세션 카드에서 `기준 선택`, `비교 선택`을 눌러 두 버전을 고른 뒤 비교할 수 있습니다.
+                세션 카드에서 `기준 선택`, `비교 선택`을 눌러 두 버전을 고른 뒤
+                비교할 수 있습니다.
               </div>
-            ) : currentSessionId && sessionHistory[0]?.sessionId === currentSessionId ? (
+            ) : currentSessionId &&
+              sessionHistory[0]?.sessionId === currentSessionId ? (
               <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
                 비교 버튼을 누르면 선택한 두 버전의 차이를 요약해서 보여줍니다.
               </div>
@@ -2079,16 +2453,23 @@ export default function SketchConsole() {
 
           <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-semibold text-slate-900">AWS 배포/삭제</p>
+              <p className="text-sm font-semibold text-slate-900">
+                AWS 배포/삭제
+              </p>
               <p className="text-xs text-slate-500">
-                선택된 세션의 Terraform 결과를 기준으로 배포하거나 삭제할 수 있습니다.
-                인증은 서버에 등록된 Assume Role을 사용합니다.
+                선택된 세션의 Terraform 결과를 기준으로 배포하거나 삭제할 수
+                있습니다. 인증은 서버에 등록된 Assume Role을 사용합니다.
               </p>
             </div>
             <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold text-slate-700">처음 이용 가이드</p>
+              <p className="text-xs font-semibold text-slate-700">
+                처음 이용 가이드
+              </p>
               <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-slate-600">
-                <li>AWS 콘솔에서 IAM Role을 생성합니다. (신뢰 정책에 우리 서비스 백엔드 Role 허용)</li>
+                <li>
+                  AWS 콘솔에서 IAM Role을 생성합니다. (신뢰 정책에 우리 서비스
+                  백엔드 Role 허용)
+                </li>
                 <li>생성된 Role ARN을 아래 입력란에 저장합니다.</li>
                 <li>저장 후 `simulate`를 끄고 실제 배포를 실행합니다.</li>
               </ol>
@@ -2133,7 +2514,9 @@ export default function SketchConsole() {
                 <input
                   type="checkbox"
                   checked={simulateDeployment}
-                  onChange={(event) => setSimulateDeployment(event.target.checked)}
+                  onChange={(event) =>
+                    setSimulateDeployment(event.target.checked)
+                  }
                 />
                 simulate 모드(테스트용)
               </label>
@@ -2167,7 +2550,11 @@ export default function SketchConsole() {
                 onClick={() => {
                   void deployCurrentSession();
                 }}
-                disabled={!currentSessionId || isDeploying || (!simulateDeployment && !isAwsConfigured)}
+                disabled={
+                  !currentSessionId ||
+                  isDeploying ||
+                  (!simulateDeployment && !isAwsConfigured)
+                }
                 className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
               >
                 {isDeploying ? "배포 중..." : "배포 실행"}
@@ -2177,7 +2564,11 @@ export default function SketchConsole() {
                 onClick={() => {
                   void destroyCurrentSession();
                 }}
-                disabled={!currentSessionId || isDestroying || (!simulateDeployment && !isAwsConfigured)}
+                disabled={
+                  !currentSessionId ||
+                  isDestroying ||
+                  (!simulateDeployment && !isAwsConfigured)
+                }
                 className="h-9 rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 disabled:opacity-50"
               >
                 {isDestroying ? "삭제 중..." : "리소스 삭제"}
@@ -2185,23 +2576,38 @@ export default function SketchConsole() {
             </div>
             {currentSessionId ? (
               <p className="mt-2 text-[11px] text-slate-500">
-                삭제 확인코드(자동 적용): <code>DESTROY-{currentSessionId.replace(/-/g, "").slice(-6).toUpperCase()}</code>
+                삭제 확인코드(자동 적용):{" "}
+                <code>
+                  DESTROY-
+                  {currentSessionId.replace(/-/g, "").slice(-6).toUpperCase()}
+                </code>
               </p>
             ) : null}
 
             <div className="mt-3">
               <p className="text-xs font-semibold text-slate-700">배포 이력</p>
               {isLoadingDeployments ? (
-                <p className="mt-1 text-xs text-slate-500">배포 이력을 불러오는 중입니다.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  배포 이력을 불러오는 중입니다.
+                </p>
               ) : deployments.length === 0 ? (
-                <p className="mt-1 text-xs text-slate-500">아직 배포/삭제 이력이 없습니다.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  아직 배포/삭제 이력이 없습니다.
+                </p>
               ) : (
                 <div className="mt-2 space-y-2">
                   {deployments.map((item) => (
-                    <div key={item.deploymentId} className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                    <div
+                      key={item.deploymentId}
+                      className="rounded-md border border-slate-200 bg-slate-50 p-2"
+                    >
                       <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                        <span className="rounded bg-slate-900 px-1.5 py-0.5 text-white">{item.action}</span>
-                        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-slate-700">{item.status}</span>
+                        <span className="rounded bg-slate-900 px-1.5 py-0.5 text-white">
+                          {item.action}
+                        </span>
+                        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-slate-700">
+                          {item.status}
+                        </span>
                         <span className="text-slate-500">{item.region}</span>
                         <span className="text-slate-400">{item.createdAt}</span>
                       </div>
@@ -2219,13 +2625,19 @@ export default function SketchConsole() {
 
           {analysisCoverage !== null && analysisCoverage < 0.75 ? (
             <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              요구사항 반영률이 낮습니다 ({Math.round(analysisCoverage * 100)}%). 미반영 힌트:{" "}
-              {analysisUnmetHints.length ? analysisUnmetHints.join(", ") : "없음"}
+              요구사항 반영률이 낮습니다 ({Math.round(analysisCoverage * 100)}
+              %). 미반영 힌트:{" "}
+              {analysisUnmetHints.length
+                ? analysisUnmetHints.join(", ")
+                : "없음"}
             </div>
           ) : null}
 
           <div className="grid gap-6 lg:grid-cols-[420px_1fr] xl:grid-cols-[480px_1fr]">
-            <ControlPanel onGenerate={handleGenerate} isGenerating={isGenerating} />
+            <ControlPanel
+              onGenerate={handleGenerate}
+              isGenerating={isGenerating}
+            />
             <ResultPanel
               activeTab={activeTab}
               setActiveTab={setActiveTab}
@@ -2245,5 +2657,3 @@ export default function SketchConsole() {
     </>
   );
 }
-
-
