@@ -24,6 +24,8 @@ def _write_fake_terraform(path: Path) -> None:
                 "echo Terraform v0.fake",
                 "exit /b 0",
                 ":init",
+                "if not exist .terraform mkdir .terraform",
+                "echo lock > .terraform.lock.hcl",
                 "echo init ok",
                 "exit /b 0",
                 ":apply",
@@ -76,6 +78,8 @@ def test_run_deploy_persists_state_and_outputs(monkeypatch) -> None:
         assert result.resources["stateExistedBefore"] is False
         assert Path(str(result.resources["stateFile"])).exists()
         assert Path(str(result.resources["stateDir"])) == state_root / "session-123"
+        assert not (Path(str(result.resources["stateDir"])) / ".terraform").exists()
+        assert not (Path(str(result.resources["stateDir"])) / ".terraform.lock.hcl").exists()
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
 
@@ -124,5 +128,7 @@ def test_run_destroy_requires_saved_state_and_cleans_up(monkeypatch) -> None:
         assert destroyed.resources["stateExistedBefore"] is True
         assert destroyed.resources["statePreserved"] is False
         assert not Path(str(deployed.resources["stateFile"])).exists()
+        assert not (Path(str(deployed.resources["stateDir"])) / ".terraform").exists()
+        assert not (Path(str(deployed.resources["stateDir"])) / ".terraform.lock.hcl").exists()
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)

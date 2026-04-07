@@ -109,6 +109,13 @@ def _clear_saved_state(work_dir: Path) -> None:
     for file_path in _state_file_paths(work_dir):
         if file_path.exists():
             file_path.unlink()
+    _cleanup_runtime_artifacts(work_dir)
+
+
+def _cleanup_runtime_artifacts(work_dir: Path) -> None:
+    lock_file = work_dir / ".terraform.lock.hcl"
+    if lock_file.exists():
+        lock_file.unlink()
     terraform_dir = work_dir / ".terraform"
     if terraform_dir.exists():
         shutil.rmtree(terraform_dir, ignore_errors=True)
@@ -230,6 +237,7 @@ def run_deploy(
 
     rc_init, out_init = _run([terraform_bin, "init", "-input=false", "-no-color"], cwd=work, env=env)
     if rc_init != 0:
+        _cleanup_runtime_artifacts(work)
         return DeployExecutionResult(
             status="FAILED",
             log=f"[terraform init]\n{out_init}",
@@ -243,6 +251,7 @@ def run_deploy(
         timeout_sec=900,
     )
     if rc_apply != 0:
+        _cleanup_runtime_artifacts(work)
         return DeployExecutionResult(
             status="FAILED",
             log=f"[terraform apply]\n{out_apply}",
@@ -250,6 +259,7 @@ def run_deploy(
         )
 
     rc_output, out_output = _run([terraform_bin, "output", "-json"], cwd=work, env=env, timeout_sec=60)
+    _cleanup_runtime_artifacts(work)
     return DeployExecutionResult(
         status="SUCCEEDED",
         log=f"[terraform apply]\n{out_apply}",
@@ -303,6 +313,7 @@ def run_destroy(
 
     rc_init, out_init = _run([terraform_bin, "init", "-input=false", "-no-color"], cwd=work, env=env)
     if rc_init != 0:
+        _cleanup_runtime_artifacts(work)
         return DeployExecutionResult(
             status="FAILED",
             log=f"[terraform init]\n{out_init}",
@@ -316,6 +327,7 @@ def run_destroy(
         timeout_sec=900,
     )
     if rc_destroy != 0:
+        _cleanup_runtime_artifacts(work)
         return DeployExecutionResult(
             status="FAILED",
             log=f"[terraform destroy]\n{out_destroy}",
