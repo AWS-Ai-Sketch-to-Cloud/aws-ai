@@ -177,11 +177,23 @@ def _execute_deployment_job(
             simulate=simulate,
         )
         if action == "DEPLOY":
-            result = run_deploy(terraform_code=terraform_code, credentials=credentials, region=region, simulate=simulate)
+            result = run_deploy(
+                terraform_code=terraform_code,
+                credentials=credentials,
+                region=region,
+                state_key=session_id,
+                simulate=simulate,
+            )
             event_ok = "DEPLOY_SUCCEEDED"
             event_fail = "DEPLOY_FAILED"
         else:
-            result = run_destroy(terraform_code=terraform_code, credentials=credentials, region=region, simulate=simulate)
+            result = run_destroy(
+                terraform_code=terraform_code,
+                credentials=credentials,
+                region=region,
+                state_key=session_id,
+                simulate=simulate,
+            )
             event_ok = "DESTROY_SUCCEEDED"
             event_fail = "DESTROY_FAILED"
 
