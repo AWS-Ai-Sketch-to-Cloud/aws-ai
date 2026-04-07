@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 
@@ -7,14 +8,38 @@ def _bool_tf(value: bool) -> str:
     return "true" if value else "false"
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_region(raw_region: Any) -> str:
+    default_region = os.getenv("DEFAULT_DEPLOY_REGION", "ap-northeast-2").strip() or "ap-northeast-2"
+    if _env_flag("DEPLOY_FORCE_DEFAULT_REGION", True):
+        return default_region
+    region = str(raw_region or "").strip()
+    return region or default_region
+
+
+def _resolve_ec2_defaults(ec2: dict[str, Any]) -> tuple[int, str]:
+    ec2_count = int(ec2.get("count", 1))
+    instance_type = str(ec2.get("instance_type", "t3.micro")).strip() or "t3.micro"
+    if _env_flag("DEPLOY_FREE_TIER_SAFE_MODE", True):
+        safe_types = {"t3.micro", "t2.micro"}
+        if instance_type not in safe_types:
+            instance_type = "t3.micro"
+    return ec2_count, instance_type
+
+
 def generate_terraform_from_architecture(architecture: dict[str, Any]) -> str:
     ec2 = architecture.get("ec2", {})
     rds = architecture.get("rds", {})
     bedrock = architecture.get("bedrock", {})
     public = bool(architecture.get("public", False))
-    region = architecture.get("region", "ap-northeast-2")
-    ec2_count = int(ec2.get("count", 1))
-    instance_type = ec2.get("instance_type", "t3.micro")
+    region = _resolve_region(architecture.get("region", "ap-northeast-2"))
+    ec2_count, instance_type = _resolve_ec2_defaults(ec2)
     rds_enabled = bool(rds.get("enabled", False))
     rds_engine = rds.get("engine")
     bedrock_enabled = bool(bedrock.get("enabled", False))

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import os
+from queue import Empty, Queue
 import shutil
 import subprocess
+from threading import Thread
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,9 +29,22 @@ class AwsCredentials:
 
 
 def _resolve_terraform_bin() -> str:
+    env_bin = os.getenv("TERRAFORM_BIN", "").strip()
+    if env_bin:
+        return env_bin
+
     path_bin = shutil.which("terraform")
     if path_bin:
         return path_bin
+
+    winget_bin = Path(
+        os.path.expandvars(
+            r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Hashicorp.Terraform_Microsoft.Winget.Source_8wekyb3d8bbwe\terraform.exe"
+        )
+    )
+    if winget_bin.exists():
+        return str(winget_bin)
+
     return "terraform"
 
 
@@ -49,6 +65,28 @@ def _max_resource_count() -> int:
         return 25
 
 
+def _int_env(name: str, default: int, minimum: int = 1) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(minimum, int(raw))
+    except ValueError:
+        return default
+
+
+def _terraform_init_timeout_sec() -> int:
+    return _int_env("DEPLOY_TERRAFORM_INIT_TIMEOUT_SEC", 900, minimum=60)
+
+
+def _terraform_apply_timeout_sec() -> int:
+    return _int_env("DEPLOY_TERRAFORM_APPLY_TIMEOUT_SEC", 5400, minimum=60)
+
+
+def _terraform_destroy_timeout_sec() -> int:
+    return _int_env("DEPLOY_TERRAFORM_DESTROY_TIMEOUT_SEC", 7200, minimum=60)
+
+
 def _estimate_resource_count(terraform_code: str) -> int:
     return terraform_code.count('resource "')
 
@@ -61,25 +99,76 @@ def _guardrails_check(terraform_code: str, region: str) -> None:
         raise ValueError(f"resource count limit exceeded: {count}>{_max_resource_count()}")
 
 
-def _run(cmd: list[str], cwd: Path, env: dict[str, str], timeout_sec: int = 300) -> tuple[int, str]:
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout_sec,
-        check=False,
-    )
-    output = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
-    return proc.returncode, output.strip()
+def _run(
+    cmd: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    timeout_sec: int = 300,
+    on_output: Callable[[str], None] | None = None,
+) -> tuple[int, str]:
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except FileNotFoundError:
+        return 127, f"{cmd[0]} command not found. Install Terraform and ensure it is in PATH."
+
+    output_lines: list[str] = []
+    line_queue: Queue[str | None] = Queue()
+    start_at = time.monotonic()
+    stdout = proc.stdout
+
+    def _reader() -> None:
+        if stdout is None:
+            line_queue.put(None)
+            return
+        try:
+            for raw in iter(stdout.readline, ""):
+                line_queue.put(raw.rstrip("\r\n"))
+        finally:
+            line_queue.put(None)
+
+    reader_thread = Thread(target=_reader, daemon=True)
+    reader_thread.start()
+
+    while True:
+        try:
+            line = line_queue.get(timeout=0.3)
+            if line is None:
+                break
+            output_lines.append(line)
+            if on_output:
+                on_output(line)
+        except Empty:
+            if time.monotonic() - start_at > timeout_sec:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                timeout_msg = f"command timed out after {timeout_sec} seconds: {' '.join(cmd)}"
+                output_lines.append(timeout_msg)
+                if on_output:
+                    on_output(timeout_msg)
+                return 124, "\n".join(output_lines).strip()
+            if proc.poll() is not None and line_queue.empty():
+                break
+
+    return proc.wait(), "\n".join(output_lines).strip()
 
 
 def _state_root_dir() -> Path:
     configured = os.getenv("DEPLOY_STATE_DIR", "").strip()
     if configured:
         return Path(configured)
-    return Path(__file__).resolve().parents[1] / "storage" / "deploy-state"
+    return Path(__file__).resolve().parents[2] / "storage" / "deploy-state"
 
 
 def _session_work_dir(state_key: str) -> Path:
@@ -208,6 +297,7 @@ def run_deploy(
     region: str,
     state_key: str,
     simulate: bool,
+    on_progress: Callable[[str], None] | None = None,
 ) -> DeployExecutionResult:
     _guardrails_check(terraform_code, region)
     if simulate or os.getenv("DEPLOYMENT_SIMULATE_DEFAULT", "false").lower() == "true":
@@ -235,7 +325,13 @@ def run_deploy(
 
     work, state_exists_before = _prepare_work_dir(terraform_code=terraform_code, state_key=state_key)
 
-    rc_init, out_init = _run([terraform_bin, "init", "-input=false", "-no-color"], cwd=work, env=env)
+    rc_init, out_init = _run(
+        [terraform_bin, "init", "-input=false", "-no-color"],
+        cwd=work,
+        env=env,
+        timeout_sec=_terraform_init_timeout_sec(),
+        on_output=on_progress,
+    )
     if rc_init != 0:
         _cleanup_runtime_artifacts(work)
         return DeployExecutionResult(
@@ -248,7 +344,8 @@ def run_deploy(
         [terraform_bin, "apply", "-auto-approve", "-input=false", "-no-color"],
         cwd=work,
         env=env,
-        timeout_sec=900,
+        timeout_sec=_terraform_apply_timeout_sec(),
+        on_output=on_progress,
     )
     if rc_apply != 0:
         _cleanup_runtime_artifacts(work)
@@ -258,7 +355,7 @@ def run_deploy(
             resources=_build_state_metadata(work_dir=work, state_exists_before=state_exists_before),
         )
 
-    rc_output, out_output = _run([terraform_bin, "output", "-json"], cwd=work, env=env, timeout_sec=60)
+    rc_output, out_output = _run([terraform_bin, "output", "-json"], cwd=work, env=env, timeout_sec=60, on_output=on_progress)
     _cleanup_runtime_artifacts(work)
     return DeployExecutionResult(
         status="SUCCEEDED",
@@ -279,6 +376,7 @@ def run_destroy(
     region: str,
     state_key: str,
     simulate: bool,
+    on_progress: Callable[[str], None] | None = None,
 ) -> DeployExecutionResult:
     _guardrails_check(terraform_code, region)
     if simulate or os.getenv("DEPLOYMENT_SIMULATE_DEFAULT", "false").lower() == "true":
@@ -311,7 +409,13 @@ def run_destroy(
             resources=_build_state_metadata(work_dir=work, state_exists_before=state_exists_before),
         )
 
-    rc_init, out_init = _run([terraform_bin, "init", "-input=false", "-no-color"], cwd=work, env=env)
+    rc_init, out_init = _run(
+        [terraform_bin, "init", "-input=false", "-no-color"],
+        cwd=work,
+        env=env,
+        timeout_sec=_terraform_init_timeout_sec(),
+        on_output=on_progress,
+    )
     if rc_init != 0:
         _cleanup_runtime_artifacts(work)
         return DeployExecutionResult(
@@ -324,7 +428,8 @@ def run_destroy(
         [terraform_bin, "destroy", "-auto-approve", "-input=false", "-no-color"],
         cwd=work,
         env=env,
-        timeout_sec=900,
+        timeout_sec=_terraform_destroy_timeout_sec(),
+        on_output=on_progress,
     )
     if rc_destroy != 0:
         _cleanup_runtime_artifacts(work)

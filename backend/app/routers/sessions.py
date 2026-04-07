@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -165,6 +166,29 @@ def _execute_deployment_job(
         deployment_row.log_text = f"[{action.lower()}] running"
         db.commit()
 
+        flush_interval_raw = os.getenv("DEPLOY_LOG_FLUSH_INTERVAL_SEC", "2").strip()
+        try:
+            flush_interval_sec = max(0.5, float(flush_interval_raw))
+        except ValueError:
+            flush_interval_sec = 2.0
+        last_flushed_at = 0.0
+
+        def append_progress(line: str) -> None:
+            nonlocal last_flushed_at
+            latest_row = db.get(SessionDeployment, UUID(deployment_id))
+            if not latest_row:
+                return
+            prev = latest_row.log_text or f"[{action.lower()}] running"
+            merged = f"{prev}\n{line}".strip()
+            if len(merged) > 200000:
+                merged = merged[-200000:]
+            latest_row.log_text = merged
+            latest_row.updated_at = datetime.now(timezone.utc)
+            now = time.monotonic()
+            if now - last_flushed_at >= flush_interval_sec:
+                db.commit()
+                last_flushed_at = now
+
         credentials = resolve_credentials(
             auth_mode=auth_mode,
             access_key_id=access_key_id,
@@ -183,6 +207,7 @@ def _execute_deployment_job(
                 region=region,
                 state_key=session_id,
                 simulate=simulate,
+                on_progress=append_progress,
             )
             event_ok = "DEPLOY_SUCCEEDED"
             event_fail = "DEPLOY_FAILED"
@@ -193,6 +218,7 @@ def _execute_deployment_job(
                 region=region,
                 state_key=session_id,
                 simulate=simulate,
+                on_progress=append_progress,
             )
             event_ok = "DESTROY_SUCCEEDED"
             event_fail = "DESTROY_FAILED"

@@ -281,6 +281,28 @@ const formatCurrencyDelta = (value?: number | null): string => {
   });
 };
 
+const formatElapsed = (
+  startedAt?: string | null,
+  completedAt?: string | null,
+  nowMs: number = Date.now(),
+): string => {
+  if (!startedAt) return "-";
+  const startedMs = Date.parse(startedAt);
+  if (Number.isNaN(startedMs)) return "-";
+
+  const endMs = completedAt ? Date.parse(completedAt) : nowMs;
+  if (Number.isNaN(endMs) || endMs < startedMs) return "-";
+
+  const totalSec = Math.floor((endMs - startedMs) / 1000);
+  const hours = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+};
+
 const previewValue = (value: unknown): string => {
   if (value === null) return "null";
   if (value === undefined) return "-";
@@ -467,6 +489,9 @@ export default function SketchConsole() {
   const [isDestroying, setIsDestroying] = useState(false);
   const [deployments, setDeployments] = useState<SessionDeploymentItem[]>([]);
   const [isLoadingDeployments, setIsLoadingDeployments] = useState(false);
+  const [deploymentNowMs, setDeploymentNowMs] = useState<number>(() =>
+    Date.now(),
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
   const [githubRepos, setGithubRepos] = useState<GitHubRepoItem[]>([]);
@@ -706,6 +731,20 @@ export default function SketchConsole() {
     }, 3000);
     return () => clearInterval(timer);
   }, [deployments, currentSessionId]);
+
+  useEffect(() => {
+    const hasRunning = deployments.some(
+      (item) => item.status === "PENDING" || item.status === "RUNNING",
+    );
+    if (!hasRunning) {
+      return;
+    }
+    setDeploymentNowMs(Date.now());
+    const ticker = setInterval(() => {
+      setDeploymentNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [deployments]);
 
   useEffect(() => {
     const auth = getAuth();
@@ -2130,18 +2169,31 @@ export default function SketchConsole() {
                 </p>
               ) : (
                 sessionHistory.map((item) => (
-                  <button
+                  <div
                     key={item.sessionId}
-                    type="button"
+                    role="button"
+                    tabIndex={isLoadingSessionDetail ? -1 : 0}
                     onClick={() => {
+                      if (isLoadingSessionDetail) {
+                        return;
+                      }
                       void openSessionVersion(item.sessionId);
                     }}
-                    disabled={isLoadingSessionDetail}
+                    onKeyDown={(event) => {
+                      if (isLoadingSessionDetail) {
+                        return;
+                      }
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        void openSessionVersion(item.sessionId);
+                      }
+                    }}
+                    aria-disabled={isLoadingSessionDetail}
                     className={`rounded-md border px-3 py-2 text-left text-xs transition ${
                       currentSessionId === item.sessionId
                         ? "border-slate-900 bg-slate-900 text-white"
                         : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-                    } disabled:opacity-60`}
+                    } ${isLoadingSessionDetail ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -2201,7 +2253,7 @@ export default function SketchConsole() {
                         비교 선택
                       </button>
                     </div>
-                  </button>
+                  </div>
                 ))
               )}
             </div>
@@ -2609,6 +2661,14 @@ export default function SketchConsole() {
                           {item.status}
                         </span>
                         <span className="text-slate-500">{item.region}</span>
+                        <span className="text-slate-500">
+                          elapsed:{" "}
+                          {formatElapsed(
+                            item.startedAt,
+                            item.completedAt,
+                            deploymentNowMs,
+                          )}
+                        </span>
                         <span className="text-slate-400">{item.createdAt}</span>
                       </div>
                       {item.log ? (
