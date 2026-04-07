@@ -153,8 +153,17 @@ type SessionDeploymentListResponse = {
 type AwsDeployConfigResponse = {
   configured: boolean;
   roleArn?: string | null;
-  roleExternalId?: string | null;
-  roleSessionName?: string | null;
+};
+
+type AwsDeployGuideResponse = {
+  configured: boolean;
+  requiredPrincipalArn?: string | null;
+  requiredExternalId?: string | null;
+  suggestedRoleName: string;
+  recommendedPolicyArn: string;
+  trustPolicyJson: string;
+  iamRoleCreateUrl: string;
+  iamRolesListUrl: string;
 };
 
 type GitHubRepoAnalyzeResponse = {
@@ -471,14 +480,14 @@ export default function SketchConsole() {
   const [compareTargetSessionId, setCompareTargetSessionId] = useState<
     string | null
   >(null);
-  const [awsDeployRegion, setAwsDeployRegion] = useState("ap-northeast-2");
-  const [simulateDeployment, setSimulateDeployment] = useState(true);
   const [awsRoleArn, setAwsRoleArn] = useState("");
-  const [awsRoleExternalId, setAwsRoleExternalId] = useState("");
-  const [awsRoleSessionName, setAwsRoleSessionName] = useState(
-    "stc-console-session",
-  );
+  const [awsAccountIdInput, setAwsAccountIdInput] = useState("");
   const [isSavingAwsConfig, setIsSavingAwsConfig] = useState(false);
+  const [isClearingAwsConfig, setIsClearingAwsConfig] = useState(false);
+  const [deployGuide, setDeployGuide] = useState<AwsDeployGuideResponse | null>(
+    null,
+  );
+  const [isLoadingDeployGuide, setIsLoadingDeployGuide] = useState(false);
   const [isLoadingAwsConfig, setIsLoadingAwsConfig] = useState(false);
   const [isAwsConfigured, setIsAwsConfigured] = useState(false);
   const [awsConfigMessage, setAwsConfigMessage] = useState<string | null>(null);
@@ -697,8 +706,6 @@ export default function SketchConsole() {
       const data = (await res.json()) as AwsDeployConfigResponse;
       setIsAwsConfigured(Boolean(data.configured));
       setAwsRoleArn(data.roleArn ?? "");
-      setAwsRoleExternalId(data.roleExternalId ?? "");
-      setAwsRoleSessionName(data.roleSessionName ?? "stc-console-session");
       if (data.configured) {
         setAwsConfigMessage("AWS 연결 설정이 저장되어 있습니다.");
         setAwsConfigMessageTone("success");
@@ -711,6 +718,21 @@ export default function SketchConsole() {
       return data;
     } finally {
       setIsLoadingAwsConfig(false);
+    }
+  };
+
+  const loadAwsDeployGuide = async (token: string, apiBaseUrl: string) => {
+    setIsLoadingDeployGuide(true);
+    try {
+      const res = await authFetch(
+        `${apiBaseUrl}/api/users/aws-deploy-guide`,
+        token,
+      );
+      const data = (await res.json()) as AwsDeployGuideResponse;
+      setDeployGuide(data);
+      return data;
+    } finally {
+      setIsLoadingDeployGuide(false);
     }
   };
 
@@ -753,7 +775,52 @@ export default function SketchConsole() {
     }
     const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
     void loadAwsDeployConfig(auth.accessToken, apiBaseUrl);
+    void loadAwsDeployGuide(auth.accessToken, apiBaseUrl);
   }, []);
+
+  const copyText = async (text: string, successMessage: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setAwsConfigMessage(successMessage);
+      setAwsConfigMessageTone("success");
+    } catch {
+      setAwsConfigMessage("복사에 실패했어요. 수동으로 복사해 주세요.");
+      setAwsConfigMessageTone("error");
+    }
+  };
+
+  const normalizedAccountId = awsAccountIdInput.replace(/\D/g, "").slice(0, 12);
+  const effectivePrincipalArn =
+    deployGuide?.requiredPrincipalArn?.trim() ||
+    (normalizedAccountId.length === 12
+      ? `arn:aws:iam::${normalizedAccountId}:root`
+      : "");
+
+  const effectiveTrustPolicyJson = effectivePrincipalArn
+    ? JSON.stringify(
+        {
+          Version: "2012-10-17",
+          Statement: [
+            {
+              Effect: "Allow",
+              Principal: { AWS: effectivePrincipalArn },
+              Action: "sts:AssumeRole",
+              ...(deployGuide?.requiredExternalId
+                ? {
+                    Condition: {
+                      StringEquals: {
+                        "sts:ExternalId": deployGuide.requiredExternalId,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          ],
+        },
+        null,
+        2,
+      )
+    : "";
 
   const openSessionVersion = async (sessionId: string) => {
     const auth = getAuth();
@@ -902,8 +969,6 @@ export default function SketchConsole() {
           method: "PUT",
           body: JSON.stringify({
             roleArn: awsRoleArn.trim(),
-            roleExternalId: awsRoleExternalId.trim() || null,
-            roleSessionName: awsRoleSessionName.trim() || null,
           }),
         },
       );
@@ -920,6 +985,39 @@ export default function SketchConsole() {
     }
   };
 
+  const clearAwsDeployConfig = async () => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      setErrorMessage("로그인이 필요합니다.");
+      return;
+    }
+    const apiBaseUrl = auth.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    setIsClearingAwsConfig(true);
+    setErrorMessage(null);
+    setErrorRequestId(null);
+    try {
+      await authFetch(
+        `${apiBaseUrl}/api/users/aws-deploy-config`,
+        auth.accessToken,
+        {
+          method: "DELETE",
+          body: JSON.stringify({}),
+        },
+      );
+      setAwsRoleArn("");
+      setIsAwsConfigured(false);
+      setAwsConfigMessage("AWS 연결 설정이 해제되었습니다.");
+      setAwsConfigMessageTone("info");
+    } catch (error) {
+      applyUserError("AWS 연결 설정 해제에 실패했어요.", error);
+      const raw = error instanceof Error ? error.message : "해제 실패";
+      setAwsConfigMessage(raw);
+      setAwsConfigMessageTone("error");
+    } finally {
+      setIsClearingAwsConfig(false);
+    }
+  };
+
   const deployCurrentSession = async () => {
     const auth = getAuth();
     if (!auth?.accessToken) {
@@ -930,7 +1028,7 @@ export default function SketchConsole() {
       setErrorMessage("배포할 세션을 먼저 선택해 주세요.");
       return;
     }
-    if (!simulateDeployment && !isAwsConfigured) {
+    if (!isAwsConfigured) {
       setErrorMessage("먼저 AWS 연결 설정(Role ARN)을 저장해 주세요.");
       return;
     }
@@ -945,8 +1043,7 @@ export default function SketchConsole() {
         {
           method: "POST",
           body: JSON.stringify({
-            awsRegion: awsDeployRegion.trim() || null,
-            simulate: simulateDeployment,
+            simulate: false,
           }),
         },
       );
@@ -968,7 +1065,7 @@ export default function SketchConsole() {
       setErrorMessage("삭제할 세션을 먼저 선택해 주세요.");
       return;
     }
-    if (!simulateDeployment && !isAwsConfigured) {
+    if (!isAwsConfigured) {
       setErrorMessage("먼저 AWS 연결 설정(Role ARN)을 저장해 주세요.");
       return;
     }
@@ -983,8 +1080,7 @@ export default function SketchConsole() {
         {
           method: "POST",
           body: JSON.stringify({
-            awsRegion: awsDeployRegion.trim() || null,
-            simulate: simulateDeployment,
+            simulate: false,
             confirmDestroy: true,
             confirmationCode: `DESTROY-${currentSessionId.replace(/-/g, "").slice(-6).toUpperCase()}`,
           }),
@@ -2517,14 +2613,93 @@ export default function SketchConsole() {
               <p className="text-xs font-semibold text-slate-700">
                 처음 이용 가이드
               </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <a
+                  href={
+                    deployGuide?.iamRoleCreateUrl ??
+                    "https://console.aws.amazon.com/iam/home#/roles/create"
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+                >
+                  IAM 역할 만들기 열기
+                </a>
+                <a
+                  href={
+                    deployGuide?.iamRolesListUrl ??
+                    "https://console.aws.amazon.com/iam/home#/roles"
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+                >
+                  IAM 역할 목록 열기
+                </a>
+              </div>
               <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-slate-600">
-                <li>
-                  AWS 콘솔에서 IAM Role을 생성합니다. (신뢰 정책에 우리 서비스
-                  백엔드 Role 허용)
-                </li>
-                <li>생성된 Role ARN을 아래 입력란에 저장합니다.</li>
-                <li>저장 후 `simulate`를 끄고 실제 배포를 실행합니다.</li>
+                <li>AWS 계정 ID 12자리를 아래 입력칸에 입력합니다.</li>
+                <li>신뢰 정책 JSON 복사를 누릅니다.</li>
+                <li>IAM 역할 만들기 열기를 누릅니다.</li>
+                <li>1단계에서 사용자 지정 신뢰 정책 선택 → 정책 입력칸에 방금 복사한 JSON 붙여넣기 → 다음</li>
+                <li>2단계 권한 정책 페이지 검색창에 AdministratorAccess 입력 → 체크 → 다음</li>
+                <li>3단계에서 역할 이름 stc-deploy-role 입력 → 생성</li>
+                <li>생성된 역할 상세에서 ARN 복사 → 이 페이지 Role ARN 입력 → AWS 연결 설정 저장</li>
               </ol>
+              <div className="mt-2 rounded-md border border-slate-200 bg-white p-2 text-[11px] text-slate-600">
+                {isLoadingDeployGuide ? (
+                  <p>가이드를 불러오는 중입니다...</p>
+                ) : (
+                  <>
+                    <p className="font-semibold text-slate-700">1) AWS 계정 ID 입력</p>
+                    <input
+                      type="text"
+                      value={awsAccountIdInput}
+                      onChange={(event) =>
+                        setAwsAccountIdInput(event.target.value)
+                      }
+                      placeholder="AWS 계정 ID 12자리 (예: 123456789012)"
+                      className="mt-1 h-8 w-full rounded-md border border-slate-300 px-2 text-[11px] text-slate-700"
+                    />
+                    <p className="mt-1">
+                      계정 ID 확인 위치: AWS 콘솔 우측 상단 계정 메뉴 {"->"} 계정 ID
+                    </p>
+                    <p className="mt-2 font-semibold text-slate-700">2) 신뢰 정책 JSON 복사</p>
+                    <p className="mt-1">
+                      생성될 Principal:{" "}
+                      <code>{effectivePrincipalArn || "계정 ID를 먼저 입력하세요"}</code>
+                    </p>
+                    {deployGuide?.requiredExternalId ? (
+                      <p className="mt-1">
+                        External ID:{" "}
+                        <code>{deployGuide.requiredExternalId}</code>
+                      </p>
+                    ) : null}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!effectiveTrustPolicyJson) return;
+                          void copyText(
+                            effectiveTrustPolicyJson,
+                            "신뢰 정책 JSON을 복사했습니다.",
+                          );
+                        }}
+                        disabled={!effectiveTrustPolicyJson}
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+                      >
+                        신뢰 정책 JSON 복사
+                      </button>
+                    </div>
+                    <p className="mt-2">
+                      권장 권한 정책 이름: <code>AdministratorAccess</code>
+                    </p>
+                    <p className="mt-1">
+                      권장 역할 이름: <code>stc-deploy-role</code>
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               <input
@@ -2534,44 +2709,13 @@ export default function SketchConsole() {
                 onChange={(event) => setAwsRoleArn(event.target.value)}
                 className="h-9 rounded-md border border-slate-300 px-3 text-xs md:col-span-2"
               />
-              <input
-                type="text"
-                placeholder="Role External ID (optional)"
-                value={awsRoleExternalId}
-                onChange={(event) => setAwsRoleExternalId(event.target.value)}
-                className="h-9 rounded-md border border-slate-300 px-3 text-xs"
-              />
-              <input
-                type="text"
-                placeholder="Role Session Name (optional)"
-                value={awsRoleSessionName}
-                onChange={(event) => setAwsRoleSessionName(event.target.value)}
-                className="h-9 rounded-md border border-slate-300 px-3 text-xs"
-              />
-              <input
-                type="text"
-                placeholder="ap-northeast-2"
-                value={awsDeployRegion}
-                onChange={(event) => setAwsDeployRegion(event.target.value)}
-                className="h-9 rounded-md border border-slate-300 px-3 text-xs"
-              />
               <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                 {isLoadingAwsConfig
                   ? "AWS 연결 상태를 불러오는 중입니다."
                   : isAwsConfigured
-                    ? "AWS 연결 설정이 저장되었습니다. (키 입력 불필요)"
-                    : "아직 AWS 연결 설정이 없습니다. Role ARN 저장 후 실제 배포를 실행하세요."}
+                    ? "AWS 연결 설정이 저장되었습니다. Role ARN만으로 배포됩니다."
+                    : "아직 AWS 연결 설정이 없습니다. Role ARN 저장 후 배포를 실행하세요."}
               </p>
-              <label className="flex items-center gap-2 rounded-md border border-slate-300 px-3 text-xs text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={simulateDeployment}
-                  onChange={(event) =>
-                    setSimulateDeployment(event.target.checked)
-                  }
-                />
-                simulate 모드(테스트용)
-              </label>
               <button
                 type="button"
                 onClick={() => {
@@ -2581,6 +2725,16 @@ export default function SketchConsole() {
                 className="h-9 rounded-md border border-blue-300 bg-blue-50 px-3 text-xs font-medium text-blue-700 disabled:opacity-50"
               >
                 {isSavingAwsConfig ? "저장 중..." : "AWS 연결 설정 저장"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void clearAwsDeployConfig();
+                }}
+                disabled={isClearingAwsConfig || !isAwsConfigured}
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 disabled:opacity-50"
+              >
+                {isClearingAwsConfig ? "해제 중..." : "AWS 연결 설정 해제"}
               </button>
             </div>
             {awsConfigMessage ? (
@@ -2605,7 +2759,7 @@ export default function SketchConsole() {
                 disabled={
                   !currentSessionId ||
                   isDeploying ||
-                  (!simulateDeployment && !isAwsConfigured)
+                  !isAwsConfigured
                 }
                 className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
               >
@@ -2619,7 +2773,7 @@ export default function SketchConsole() {
                 disabled={
                   !currentSessionId ||
                   isDestroying ||
-                  (!simulateDeployment && !isAwsConfigured)
+                  !isAwsConfigured
                 }
                 className="h-9 rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 disabled:opacity-50"
               >

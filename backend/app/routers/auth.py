@@ -11,6 +11,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -25,6 +27,7 @@ from app.models import AuthIdentity, AuthSession, User, UserDeployConfig
 from app.schemas.auth import (
     AwsDeployConfigRequest,
     AwsDeployConfigResponse,
+    AwsDeployGuideResponse,
     LoginRequest,
     LoginResponse,
     LoginUser,
@@ -497,6 +500,41 @@ def _redirect_social_result(
     return RedirectResponse(f"{_social_frontend_redirect_url()}#{fragment}", status_code=302)
 
 
+def _build_deploy_trust_policy_json(principal_arn: str | None, external_id: str | None) -> str:
+    if not principal_arn:
+        return ""
+    principal = principal_arn
+    statement: dict[str, object] = {
+        "Effect": "Allow",
+        "Principal": {"AWS": principal},
+        "Action": "sts:AssumeRole",
+    }
+    if external_id:
+        statement["Condition"] = {"StringEquals": {"sts:ExternalId": external_id}}
+    policy = {"Version": "2012-10-17", "Statement": [statement]}
+    return json.dumps(policy, ensure_ascii=False, indent=2)
+
+
+def _normalize_principal_arn_for_trust(raw_arn: str) -> str:
+    arn = raw_arn.strip()
+    # STS assumed role -> IAM role ARN
+    assumed_match = re.match(r"^arn:aws:sts::(\d+):assumed-role/([^/]+)/[^/]+$", arn)
+    if assumed_match:
+        account_id = assumed_match.group(1)
+        role_name = assumed_match.group(2)
+        return f"arn:aws:iam::{account_id}:role/{role_name}"
+    return arn
+
+
+def _extract_account_id_from_iam_arn(raw_arn: str | None) -> str | None:
+    if not raw_arn:
+        return None
+    matched = re.match(r"^arn:aws:iam::(\d+):", raw_arn.strip())
+    if not matched:
+        return None
+    return matched.group(1)
+
+
 @router.post("/api/auth/register", response_model=RegisterResponse)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     existing_email = db.scalars(select(User).where(User.email == payload.email).limit(1)).first()
@@ -719,3 +757,61 @@ def upsert_aws_deploy_config(
         roleExternalId=config.role_external_id,
         roleSessionName=config.role_session_name,
     )
+
+
+@router.get("/api/users/aws-deploy-guide", response_model=AwsDeployGuideResponse)
+def get_aws_deploy_guide(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> AwsDeployGuideResponse:
+    try:
+        config = db.scalars(select(UserDeployConfig).where(UserDeployConfig.user_id == user.id).limit(1)).first()
+    except ProgrammingError:
+        db.rollback()
+        config = None
+
+    configured_role_arn = config.role_arn if config else None
+    principal_arn = os.getenv("DEPLOY_ASSUME_PRINCIPAL_ARN", "").strip() or None
+    if not principal_arn:
+        region = os.getenv("DEFAULT_DEPLOY_REGION", "ap-northeast-2").strip() or "ap-northeast-2"
+        try:
+            sts = boto3.client("sts", region_name=region)
+            caller_arn = str(sts.get_caller_identity().get("Arn", "")).strip()
+            principal_arn = _normalize_principal_arn_for_trust(caller_arn) if caller_arn else None
+        except (BotoCoreError, ClientError):
+            principal_arn = None
+    if not principal_arn:
+        account_id = _extract_account_id_from_iam_arn(configured_role_arn)
+        if account_id:
+            principal_arn = f"arn:aws:iam::{account_id}:root"
+    external_id = os.getenv("DEPLOY_ASSUME_ROLE_EXTERNAL_ID", "").strip() or None
+    role_name = os.getenv("DEPLOY_SUGGESTED_ROLE_NAME", "stc-deploy-role").strip() or "stc-deploy-role"
+    policy_arn = os.getenv("DEPLOY_RECOMMENDED_POLICY_ARN", "arn:aws:iam::aws:policy/AdministratorAccess").strip()
+    region = os.getenv("DEFAULT_DEPLOY_REGION", "ap-northeast-2").strip() or "ap-northeast-2"
+
+    return AwsDeployGuideResponse(
+        configured=bool(config and config.role_arn),
+        requiredPrincipalArn=principal_arn,
+        requiredExternalId=external_id,
+        suggestedRoleName=role_name,
+        recommendedPolicyArn=policy_arn,
+        trustPolicyJson=_build_deploy_trust_policy_json(principal_arn, external_id),
+        iamRoleCreateUrl=f"https://console.aws.amazon.com/iam/home?region={region}#/roles/create",
+        iamRolesListUrl=f"https://console.aws.amazon.com/iam/home?region={region}#/roles",
+    )
+
+
+@router.delete("/api/users/aws-deploy-config", response_model=AwsDeployConfigResponse)
+def delete_aws_deploy_config(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> AwsDeployConfigResponse:
+    try:
+        config = db.scalars(select(UserDeployConfig).where(UserDeployConfig.user_id == user.id).limit(1)).first()
+    except ProgrammingError:
+        db.rollback()
+        return AwsDeployConfigResponse(configured=False)
+    if config:
+        db.delete(config)
+        db.commit()
+    return AwsDeployConfigResponse(configured=False)

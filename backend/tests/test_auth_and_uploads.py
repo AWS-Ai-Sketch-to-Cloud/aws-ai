@@ -167,3 +167,15 @@ def test_aws_deploy_config_rejects_user_arn() -> None:
     if response.status_code == 503:
         return
     assert response.status_code == 422
+
+
+def test_aws_deploy_guide_returns_required_fields() -> None:
+    client = TestClient(app)
+    headers = _create_auth_headers(client)
+    response = client.get("/api/users/aws-deploy-guide", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert "configured" in body
+    assert "trustPolicyJson" in body
+    assert "iamRoleCreateUrl" in body
+    assert "iamRolesListUrl" in body
