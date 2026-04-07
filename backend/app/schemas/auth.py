@@ -102,3 +102,15 @@ class AwsDeployConfigResponse(BaseModel):
     roleExternalId: str | None = None
     roleSessionName: str | None = None
     contractVersion: Literal["v2"] = CONTRACT_VERSION
+
+
+class AwsDeployGuideResponse(BaseModel):
+    configured: bool
+    requiredPrincipalArn: str | None = None
+    requiredExternalId: str | None = None
+    suggestedRoleName: str
+    recommendedPolicyArn: str
+    trustPolicyJson: str
+    iamRoleCreateUrl: str
+    iamRolesListUrl: str
+    contractVersion: Literal["v2"] = CONTRACT_VERSION

@@ -50,9 +50,13 @@ terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/tfplan
 terraform/terraform.tfvars
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
 
 # Backend runtime logs
 backend/logs/
 backend/storage/
+backend/app/storage/
 backend/.deploy-state/
 

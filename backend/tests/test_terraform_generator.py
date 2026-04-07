@@ -45,3 +45,31 @@ def test_generator_uses_unique_suffix_for_named_resources() -> None:
     assert 'name       = "main-db-subnet-group-${random_string.name_suffix.result}"' in terraform_code
     assert 'identifier             = "main-db-${random_string.name_suffix.result}"' in terraform_code
     assert 'name = "stc-app-events-${random_string.name_suffix.result}"' in terraform_code
+
+
+def test_generator_forces_default_region_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("DEFAULT_DEPLOY_REGION", raising=False)
+    monkeypatch.delenv("DEPLOY_FORCE_DEFAULT_REGION", raising=False)
+
+    terraform_code = generate_terraform_from_architecture(
+        {
+            "region": "us-east-1",
+            "ec2": {"count": 1, "instance_type": "t3.micro"},
+        }
+    )
+
+    assert 'region = "ap-northeast-2"' in terraform_code
+
+
+def test_generator_free_tier_safe_mode_downsizes_instance_type(monkeypatch) -> None:
+    monkeypatch.delenv("DEPLOY_FREE_TIER_SAFE_MODE", raising=False)
+
+    terraform_code = generate_terraform_from_architecture(
+        {
+            "region": "ap-northeast-2",
+            "ec2": {"count": 2, "instance_type": "t3.medium"},
+        }
+    )
+
+    assert "count         = 2" in terraform_code
+    assert 'instance_type = "t3.micro"' in terraform_code
