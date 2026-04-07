@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,6 +73,55 @@ def _run(cmd: list[str], cwd: Path, env: dict[str, str], timeout_sec: int = 300)
     )
     output = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
     return proc.returncode, output.strip()
+
+
+def _state_root_dir() -> Path:
+    configured = os.getenv("DEPLOY_STATE_DIR", "").strip()
+    if configured:
+        return Path(configured)
+    return Path(__file__).resolve().parents[1] / "storage" / "deploy-state"
+
+
+def _session_work_dir(state_key: str) -> Path:
+    safe_key = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in state_key).strip("._")
+    if not safe_key:
+        raise ValueError("state key is required")
+    return _state_root_dir() / safe_key
+
+
+def _state_file_paths(work_dir: Path) -> list[Path]:
+    return [
+        work_dir / "terraform.tfstate",
+        work_dir / "terraform.tfstate.backup",
+        work_dir / ".terraform.lock.hcl",
+    ]
+
+
+def _prepare_work_dir(*, terraform_code: str, state_key: str) -> tuple[Path, bool]:
+    work_dir = _session_work_dir(state_key)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    (work_dir / "main.tf").write_text(terraform_code, encoding="utf-8")
+    state_exists = (work_dir / "terraform.tfstate").exists()
+    return work_dir, state_exists
+
+
+def _clear_saved_state(work_dir: Path) -> None:
+    for file_path in _state_file_paths(work_dir):
+        if file_path.exists():
+            file_path.unlink()
+    terraform_dir = work_dir / ".terraform"
+    if terraform_dir.exists():
+        shutil.rmtree(terraform_dir, ignore_errors=True)
+
+
+def _build_state_metadata(*, work_dir: Path, state_exists_before: bool, destroyed: bool = False) -> dict[str, object]:
+    state_file = work_dir / "terraform.tfstate"
+    return {
+        "stateDir": str(work_dir),
+        "stateFile": str(state_file),
+        "statePreserved": state_file.exists() and not destroyed,
+        "stateExistedBefore": state_exists_before,
+    }
 
 
 def _assume_role(
@@ -151,6 +199,7 @@ def run_deploy(
     terraform_code: str,
     credentials: AwsCredentials,
     region: str,
+    state_key: str,
     simulate: bool,
 ) -> DeployExecutionResult:
     _guardrails_check(terraform_code, region)
@@ -158,7 +207,12 @@ def run_deploy(
         return DeployExecutionResult(
             status="SUCCEEDED",
             log="[simulate] terraform apply skipped",
-            resources={"status": "simulated", "region": region, "estimatedCount": _estimate_resource_count(terraform_code)},
+            resources={
+                "status": "simulated",
+                "region": region,
+                "estimatedCount": _estimate_resource_count(terraform_code),
+                **_build_state_metadata(work_dir=_session_work_dir(state_key), state_exists_before=False),
+            },
         )
 
     account_id = _assert_allowed_account(credentials, region)
@@ -172,33 +226,40 @@ def run_deploy(
     else:
         env.pop("AWS_SESSION_TOKEN", None)
 
-    with tempfile.TemporaryDirectory(prefix="stc-deploy-") as temp_dir:
-        work = Path(temp_dir)
-        (work / "main.tf").write_text(terraform_code, encoding="utf-8")
+    work, state_exists_before = _prepare_work_dir(terraform_code=terraform_code, state_key=state_key)
 
-        rc_init, out_init = _run([terraform_bin, "init", "-input=false", "-no-color"], cwd=work, env=env)
-        if rc_init != 0:
-            return DeployExecutionResult(status="FAILED", log=f"[terraform init]\n{out_init}")
-
-        rc_apply, out_apply = _run(
-            [terraform_bin, "apply", "-auto-approve", "-input=false", "-no-color"],
-            cwd=work,
-            env=env,
-            timeout_sec=900,
-        )
-        if rc_apply != 0:
-            return DeployExecutionResult(status="FAILED", log=f"[terraform apply]\n{out_apply}")
-
-        rc_output, out_output = _run([terraform_bin, "output", "-json"], cwd=work, env=env, timeout_sec=60)
+    rc_init, out_init = _run([terraform_bin, "init", "-input=false", "-no-color"], cwd=work, env=env)
+    if rc_init != 0:
         return DeployExecutionResult(
-            status="SUCCEEDED",
-            log=f"[terraform apply]\n{out_apply}",
-            resources={
-                "terraformOutputsRaw": out_output if rc_output == 0 and out_output.strip() else None,
-                "accountId": account_id,
-                "region": region,
-            },
+            status="FAILED",
+            log=f"[terraform init]\n{out_init}",
+            resources=_build_state_metadata(work_dir=work, state_exists_before=state_exists_before),
         )
+
+    rc_apply, out_apply = _run(
+        [terraform_bin, "apply", "-auto-approve", "-input=false", "-no-color"],
+        cwd=work,
+        env=env,
+        timeout_sec=900,
+    )
+    if rc_apply != 0:
+        return DeployExecutionResult(
+            status="FAILED",
+            log=f"[terraform apply]\n{out_apply}",
+            resources=_build_state_metadata(work_dir=work, state_exists_before=state_exists_before),
+        )
+
+    rc_output, out_output = _run([terraform_bin, "output", "-json"], cwd=work, env=env, timeout_sec=60)
+    return DeployExecutionResult(
+        status="SUCCEEDED",
+        log=f"[terraform apply]\n{out_apply}",
+        resources={
+            "terraformOutputsRaw": out_output if rc_output == 0 and out_output.strip() else None,
+            "accountId": account_id,
+            "region": region,
+            **_build_state_metadata(work_dir=work, state_exists_before=state_exists_before),
+        },
+    )
 
 
 def run_destroy(
@@ -206,6 +267,7 @@ def run_destroy(
     terraform_code: str,
     credentials: AwsCredentials,
     region: str,
+    state_key: str,
     simulate: bool,
 ) -> DeployExecutionResult:
     _guardrails_check(terraform_code, region)
@@ -213,7 +275,11 @@ def run_destroy(
         return DeployExecutionResult(
             status="SUCCEEDED",
             log="[simulate] terraform destroy skipped",
-            resources={"status": "simulated-destroy", "region": region},
+            resources={
+                "status": "simulated-destroy",
+                "region": region,
+                **_build_state_metadata(work_dir=_session_work_dir(state_key), state_exists_before=False),
+            },
         )
 
     account_id = _assert_allowed_account(credentials, region)
@@ -227,25 +293,43 @@ def run_destroy(
     else:
         env.pop("AWS_SESSION_TOKEN", None)
 
-    with tempfile.TemporaryDirectory(prefix="stc-destroy-") as temp_dir:
-        work = Path(temp_dir)
-        (work / "main.tf").write_text(terraform_code, encoding="utf-8")
-
-        rc_init, out_init = _run([terraform_bin, "init", "-input=false", "-no-color"], cwd=work, env=env)
-        if rc_init != 0:
-            return DeployExecutionResult(status="FAILED", log=f"[terraform init]\n{out_init}")
-
-        rc_destroy, out_destroy = _run(
-            [terraform_bin, "destroy", "-auto-approve", "-input=false", "-no-color"],
-            cwd=work,
-            env=env,
-            timeout_sec=900,
-        )
-        if rc_destroy != 0:
-            return DeployExecutionResult(status="FAILED", log=f"[terraform destroy]\n{out_destroy}")
-
+    work, state_exists_before = _prepare_work_dir(terraform_code=terraform_code, state_key=state_key)
+    if not (work / "terraform.tfstate").exists():
         return DeployExecutionResult(
-            status="SUCCEEDED",
-            log=f"[terraform destroy]\n{out_destroy}",
-            resources={"destroyed": True, "accountId": account_id, "region": region},
+            status="FAILED",
+            log="[terraform destroy]\nno saved terraform state found for this session; deploy once successfully before destroy",
+            resources=_build_state_metadata(work_dir=work, state_exists_before=state_exists_before),
         )
+
+    rc_init, out_init = _run([terraform_bin, "init", "-input=false", "-no-color"], cwd=work, env=env)
+    if rc_init != 0:
+        return DeployExecutionResult(
+            status="FAILED",
+            log=f"[terraform init]\n{out_init}",
+            resources=_build_state_metadata(work_dir=work, state_exists_before=state_exists_before),
+        )
+
+    rc_destroy, out_destroy = _run(
+        [terraform_bin, "destroy", "-auto-approve", "-input=false", "-no-color"],
+        cwd=work,
+        env=env,
+        timeout_sec=900,
+    )
+    if rc_destroy != 0:
+        return DeployExecutionResult(
+            status="FAILED",
+            log=f"[terraform destroy]\n{out_destroy}",
+            resources=_build_state_metadata(work_dir=work, state_exists_before=state_exists_before),
+        )
+
+    _clear_saved_state(work)
+    return DeployExecutionResult(
+        status="SUCCEEDED",
+        log=f"[terraform destroy]\n{out_destroy}",
+        resources={
+            "destroyed": True,
+            "accountId": account_id,
+            "region": region,
+            **_build_state_metadata(work_dir=work, state_exists_before=state_exists_before, destroyed=True),
+        },
+    )

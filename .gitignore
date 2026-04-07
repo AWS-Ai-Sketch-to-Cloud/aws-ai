@@ -16,6 +16,8 @@ env/
 .coverage
 .coverage.*
 htmlcov/
+pytest-cache-files-*/
+.test-artifacts/
 
 # Local environment / secrets
 .env
@@ -52,4 +54,5 @@ terraform/terraform.tfvars
 # Backend runtime logs
 backend/logs/
 backend/storage/
+backend/.deploy-state/
 
