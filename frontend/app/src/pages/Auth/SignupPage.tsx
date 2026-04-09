@@ -136,13 +136,13 @@ export default function SignupPage() {
         title="회원가입 | Sketch-to-Cloud"
         description="Sketch-to-Cloud 회원가입"
       />
-      <div className="relative min-h-screen overflow-hidden bg-[#FDFDFD] px-6 py-10 text-[#202020]">
+      <div className="relative min-h-screen overflow-hidden bg-[#FDFDFD] px-6 py-10 text-[#202020] dark:bg-[#0f172a] dark:text-slate-100">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,153,0,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(73,205,223,0.18),_transparent_28%)]" />
         <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
-          <section className="w-full max-w-2xl rounded-3xl border border-[#E7E7E7] bg-white px-6 py-8 text-gray-900 shadow-2xl shadow-[#49CDDF]/10 backdrop-blur sm:px-8 sm:py-10">
+          <section className="w-full max-w-2xl rounded-3xl border border-[#E7E7E7] bg-white px-6 py-8 text-gray-900 shadow-2xl shadow-[#49CDDF]/10 backdrop-blur dark:border-slate-800 dark:bg-[#152238] dark:text-slate-100 sm:px-8 sm:py-10">
             <div className="mx-auto max-w-xl">
               <h2 className="mt-2 text-3xl font-semibold">회원가입</h2>
-              <p className="mt-3 text-sm leading-6 text-gray-500">
+              <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-slate-300">
                 정보를 입력하면 계정이 생성됩니다.
               </p>
               {signupContext.provider ? (
@@ -154,14 +154,14 @@ export default function SignupPage() {
 
               <form className="mt-8 space-y-5" onSubmit={onSubmit}>
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-gray-700">
+                  <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                     이름
                   </span>
                   <input
                     className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
                       fieldErrors.displayName
                         ? "border-red-400 focus:border-red-500"
-                        : "border-gray-200 focus:border-[#49CDDF]"
+                        : "border-gray-200 focus:border-[#49CDDF] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                     }`}
                     value={displayName}
                     onChange={(event) => {
@@ -182,14 +182,14 @@ export default function SignupPage() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-gray-700">
+                  <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                     로그인 ID
                   </span>
                   <input
                     className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
                       fieldErrors.loginId
                         ? "border-red-400 focus:border-red-500"
-                        : "border-gray-200 focus:border-[#49CDDF]"
+                        : "border-gray-200 focus:border-[#49CDDF] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                     }`}
                     value={loginId}
                     onChange={(event) => {
@@ -214,7 +214,7 @@ export default function SignupPage() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-gray-700">
+                  <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                     이메일
                   </span>
                   <input
@@ -223,7 +223,7 @@ export default function SignupPage() {
                     className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
                       fieldErrors.email
                         ? "border-red-400 focus:border-red-500"
-                        : "border-gray-200 focus:border-[#49CDDF]"
+                        : "border-gray-200 focus:border-[#49CDDF] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                     }`}
                     value={email}
                     onChange={(event) => {
@@ -244,7 +244,7 @@ export default function SignupPage() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-gray-700">
+                  <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                     비밀번호
                   </span>
                   <input
@@ -252,7 +252,7 @@ export default function SignupPage() {
                     className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
                       fieldErrors.password
                         ? "border-red-400 focus:border-red-500"
-                        : "border-gray-200 focus:border-[#49CDDF]"
+                        : "border-gray-200 focus:border-[#49CDDF] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                     }`}
                     value={password}
                     onChange={(event) => {
@@ -307,7 +307,7 @@ export default function SignupPage() {
 
                 <Link
                   to="/"
-                  className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition hover:border-[#49CDDF] hover:text-[#49CDDF]"
+                  className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition hover:border-[#49CDDF] hover:text-[#49CDDF] dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-sky-300"
                 >
                   로그인으로 이동
                 </Link>

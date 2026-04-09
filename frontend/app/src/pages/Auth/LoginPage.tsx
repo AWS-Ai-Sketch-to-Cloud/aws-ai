@@ -215,6 +215,7 @@ export default function LoginPage() {
         accessToken: login.accessToken,
         refreshToken: login.refreshToken,
         apiBaseUrl: API_BASE_URL,
+        authProvider: "password",
       });
       toast({
         title: "로그인 완료",
@@ -242,11 +243,11 @@ export default function LoginPage() {
         title="로그인 | Sketch-to-Cloud"
         description="Sketch-to-Cloud 로그인"
       />
-      <div className="relative min-h-screen bg-[#FDFDFD] px-6 py-10 text-[#202020]">
+      <div className="relative min-h-screen bg-[#FDFDFD] px-6 py-10 text-[#202020] dark:bg-[#0f172a] dark:text-slate-100">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,153,0,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(73,205,223,0.18),_transparent_28%)]" />
         <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
           <div className="grid w-full gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-            <section className="hidden rounded-3xl border border-[#E7E7E7] bg-white/80 p-10 backdrop-blur lg:block">
+            <section className="hidden rounded-3xl border border-[#E7E7E7] bg-white/80 p-10 backdrop-blur dark:border-slate-800 dark:bg-[#152238]/90 lg:block">
               <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#49CDDF]">
                 Sketch to Cloud
               </p>
@@ -255,24 +256,24 @@ export default function LoginPage() {
               </h1>
             </section>
 
-            <section className="relative z-10 rounded-3xl border border-[#E7E7E7] bg-white p-8 text-gray-900 shadow-2xl shadow-[#49CDDF]/10 backdrop-blur sm:p-10">
+            <section className="relative z-10 rounded-3xl border border-[#E7E7E7] bg-white p-8 text-gray-900 shadow-2xl shadow-[#49CDDF]/10 backdrop-blur dark:border-slate-800 dark:bg-[#152238] dark:text-slate-100 sm:p-10">
               <div className="mx-auto max-w-md">
                 <h2 className="mt-4 text-3xl font-semibold">로그인</h2>
-                <p className="mt-3 text-sm leading-6 text-gray-500">
+                <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-slate-300">
                   테스트 계정으로 빠르게 시작하거나 기존 ID로 로그인할 수
                   있습니다.
                 </p>
 
                 <form className="mt-8 space-y-5" onSubmit={onSubmit}>
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-gray-700">
+                    <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                       로그인 ID
                     </span>
                     <input
                       className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
                         fieldErrors.loginId
                           ? "border-red-400 focus:border-red-500"
-                          : "border-gray-200 focus:border-[#49CDDF]"
+                          : "border-gray-200 focus:border-[#49CDDF] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                       }`}
                       value={loginId}
                       onChange={(event) => {
@@ -297,7 +298,7 @@ export default function LoginPage() {
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-gray-700">
+                    <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                       비밀번호
                     </span>
                     <input
@@ -305,7 +306,7 @@ export default function LoginPage() {
                       className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
                         fieldErrors.password || fieldErrors.auth
                           ? "border-red-400 focus:border-red-500"
-                          : "border-gray-200 focus:border-[#49CDDF]"
+                          : "border-gray-200 focus:border-[#49CDDF] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                       }`}
                       value={password}
                       onChange={(event) => {
@@ -339,7 +340,7 @@ export default function LoginPage() {
 
                   <div className="flex items-center gap-3 py-1">
                     <div className="h-px flex-1 bg-gray-200" />
-                    <span className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-400">
+                    <span className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-400 dark:text-slate-500">
                       소셜 로그인
                     </span>
                     <div className="h-px flex-1 bg-gray-200" />
@@ -427,7 +428,7 @@ export default function LoginPage() {
                     ))}
                   </div>
 
-                  <p className="mt-4 text-center text-sm text-gray-600">
+                  <p className="mt-4 text-center text-sm text-gray-600 dark:text-slate-300">
                     아직 회원이 아니신가요?{" "}
                     <Link
                       to="/signup"

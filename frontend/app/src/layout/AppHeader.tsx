@@ -1,59 +1,125 @@
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import { ThemeToggleButton } from "../components/common/ThemeToggleButton";
-import { useSidebar } from "../context/SidebarContext";
+import {
+  clearAuthSession,
+  getStoredAuthSession,
+  type StoredAuthSession,
+} from "../lib/auth-session";
 
 const AppHeader: React.FC = () => {
-  const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [session, setSession] = useState<StoredAuthSession | null>(null);
 
-  const handleToggle = () => {
-    if (window.innerWidth >= 1024) {
-      toggleSidebar();
-    } else {
-      toggleMobileSidebar();
+  useEffect(() => {
+    setSession(getStoredAuthSession());
+  }, [location.pathname]);
+
+  const initials = useMemo(() => {
+    const displayName = session?.user.displayName?.trim();
+    if (!displayName) {
+      return "ST";
     }
+    return displayName.slice(0, 2).toUpperCase();
+  }, [session?.user.displayName]);
+
+  const authProviderLabel = useMemo(() => {
+    switch (session?.authProvider ?? "password") {
+      case "github":
+        return "GitHub";
+      case "google":
+        return "Google";
+      case "kakao":
+        return "Kakao";
+      case "naver":
+        return "Naver";
+      default:
+        return "ID";
+    }
+  }, [session?.authProvider]);
+
+  const navItems = [
+    { to: "/workspace", label: "워크스페이스" },
+    { to: "/projects", label: "프로젝트" },
+    { to: "/deploy", label: "배포" },
+    { to: "/settings", label: "설정" },
+  ];
+
+  const handleLogout = () => {
+    clearAuthSession();
+    navigate("/", { replace: true });
   };
 
   return (
-    <header className="sticky top-0 z-99999 flex w-full border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex w-full items-center justify-between px-3 py-3 sm:px-4 lg:px-6">
-        <div className="flex items-center gap-3">
-          <button
-            className="z-99999 flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-500 dark:border-gray-800 dark:text-gray-400"
-            onClick={handleToggle}
-            aria-label="사이드바 토글"
-          >
-            {isMobileOpen ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M6.22 7.28a.75.75 0 0 1 1.06-1.06L12 10.94l4.72-4.72a.75.75 0 1 1 1.06 1.06L13.06 12l4.72 4.72a.75.75 0 1 1-1.06 1.06L12 13.06l-4.72 4.72a.75.75 0 0 1-1.06-1.06L10.94 12 6.22 7.28Z"
-                  fill="currentColor"
-                />
-              </svg>
-            ) : (
-              <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M.58 1A.75.75 0 0 1 1.33.25h13.34a.75.75 0 0 1 0 1.5H1.33A.75.75 0 0 1 .58 1Zm0 10a.75.75 0 0 1 .75-.75h13.34a.75.75 0 0 1 0 1.5H1.33a.75.75 0 0 1-.75-.75Zm0-5a.75.75 0 0 1 .75-.75H8a.75.75 0 0 1 0 1.5H1.33A.75.75 0 0 1 .58 6Z"
-                  fill="currentColor"
-                />
-              </svg>
-            )}
-          </button>
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+      <div className="mx-auto flex w-full max-w-7xl flex-col">
+        <div className="flex items-center justify-between gap-4 px-4 py-4 md:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FF9900] text-base font-bold text-white shadow-sm">
+              SC
+            </div>
+            <div>
+              <p className="text-base font-semibold text-slate-950 dark:text-white">
+                Sketch-to-Cloud
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                AI 아키텍처 콘솔
+              </p>
+            </div>
+          </div>
 
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Sketch-to-Cloud</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">AI 인프라 설계 콘솔</p>
+          <div className="flex items-center gap-3">
+            <ThemeToggleButton />
+            <div className="hidden items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 md:flex dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-slate-200 dark:text-slate-900">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
+                    {session?.user.displayName ?? "게스트"}
+                  </p>
+                  <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {authProviderLabel}
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
+                  {session?.user.email ?? "로그인 정보 없음"}
+                </p>
+              </div>
+            </div>
+            {session ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+              >
+                로그아웃
+              </button>
+            ) : null}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="rounded-md bg-[#FFF3DF] px-2 py-1 text-xs font-medium text-[#FF9900]">
-            API v2
-          </span>
-          <ThemeToggleButton />
-        </div>
+        <nav className="overflow-x-auto border-t border-slate-200 px-4 dark:border-slate-800 md:px-6">
+          <div className="flex min-w-max items-center gap-2 py-3">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  `rounded-full px-4 py-2 text-sm font-medium transition ${
+                    isActive
+                      ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white"
+                  }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
       </div>
     </header>
   );

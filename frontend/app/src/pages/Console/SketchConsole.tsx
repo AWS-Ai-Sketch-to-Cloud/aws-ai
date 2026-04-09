@@ -1,8 +1,11 @@
 ﻿import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
-import { Header } from "../../components/dashboard/header";
 import { ControlPanel } from "../../components/dashboard/control-panel";
 import { ResultPanel } from "../../components/dashboard/result-panel";
+import {
+  getStoredAuthSession,
+  type StoredAuthSession,
+} from "../../lib/auth-session";
 import {
   Tabs,
   TabsContent,
@@ -10,13 +13,8 @@ import {
   TabsTrigger,
 } from "../../components/ui/tabs";
 
-type AuthSession = {
-  accessToken: string;
-  refreshToken: string;
-  apiBaseUrl?: string;
-};
-
 type RepoImportTab = "my-repos" | "repo-url";
+type ConsolePage = "workspace" | "projects" | "deploy" | "settings";
 
 type ApiErrorPayload = {
   detail?: string;
@@ -428,7 +426,11 @@ const StageBars = ({
   );
 };
 
-export default function SketchConsole() {
+export default function SketchConsole({
+  page = "workspace",
+}: {
+  page?: ConsolePage;
+}) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<
     "idle" | "analyzing" | "complete" | "optimized"
@@ -529,15 +531,38 @@ export default function SketchConsole() {
     githubStatus?.githubApiReachable,
   );
 
-  const getAuth = (): AuthSession | null => {
-    try {
-      const raw = sessionStorage.getItem("stc-auth");
-      if (!raw) return null;
-      return JSON.parse(raw) as AuthSession;
-    } catch {
-      return null;
-    }
+  const getAuth = (): StoredAuthSession | null => getStoredAuthSession();
+  const currentUser = getAuth()?.user ?? null;
+  const showWorkspace = page === "workspace";
+  const showProjects = page === "projects";
+  const showDeploy = page === "deploy";
+  const showSettings = page === "settings";
+  const pageTitleMap: Record<ConsolePage, string> = {
+    workspace: "Workspace",
+    projects: "Projects",
+    deploy: "Deploy",
+    settings: "Settings",
   };
+  const pageDescriptionMap: Record<ConsolePage, string> = {
+    workspace: "Sketch-to-Cloud 작업 공간",
+    projects: "Sketch-to-Cloud 프로젝트와 버전 이력",
+    deploy: "Sketch-to-Cloud AWS 배포 콘솔",
+    settings: "Sketch-to-Cloud 연결 상태와 설정",
+  };
+  const authProviderLabel = (() => {
+    switch (getAuth()?.authProvider ?? "password") {
+      case "github":
+        return "GitHub 로그인";
+      case "google":
+        return "Google 로그인";
+      case "kakao":
+        return "Kakao 로그인";
+      case "naver":
+        return "Naver 로그인";
+      default:
+        return "ID 로그인";
+    }
+  })();
 
   const applyUserError = (fallback: string, error: unknown) => {
     const raw = error instanceof Error ? error.message : fallback;
@@ -1548,6 +1573,15 @@ export default function SketchConsole() {
   }, []);
 
   useEffect(() => {
+    if (!showSettings) {
+      return;
+    }
+    void loadGitHubConnectionStatus();
+    void loadReadiness();
+    void loadRepoAnalysisHealth();
+  }, [showSettings]);
+
+  useEffect(() => {
     if (hasGitHubRepoAccess && !selectedRepo && !repoUrlInput.trim()) {
       setRepoImportTab("my-repos");
     }
@@ -1700,13 +1734,11 @@ export default function SketchConsole() {
   return (
     <>
       <PageMeta
-        title="Console | Sketch-to-Cloud"
-        description="Sketch-to-Cloud 메인 대시보드"
+        title={`${pageTitleMap[page]} | Sketch-to-Cloud`}
+        description={pageDescriptionMap[page]}
       />
-      <div className="min-h-screen bg-background">
-        <Header generationStatus={generationStatus} />
-
-        <main className="container mx-auto px-4 py-6 lg:px-6">
+      <div className="min-h-[calc(100vh-8rem)]">
+        <main className="space-y-4">
           {errorMessage ? (
             <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
@@ -1720,7 +1752,44 @@ export default function SketchConsole() {
               ) : null}
             </div>
           ) : null}
-          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
+          {showSettings ? (
+            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+              <p className="text-sm font-semibold text-slate-950 dark:text-white">
+                계정 및 연결 상태
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                현재 로그인 정보와 GitHub, AI 분석 준비 상태를 한 곳에서 점검할 수 있습니다.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">사용자</p>
+                  <p className="mt-1 font-semibold text-slate-900 dark:text-white">
+                    {currentUser?.displayName ?? "게스트"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">이메일</p>
+                  <p className="mt-1 break-all font-medium text-slate-900 dark:text-white">
+                    {currentUser?.email ?? "로그인 정보 없음"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">권한</p>
+                  <p className="mt-1 font-medium text-slate-900 dark:text-white">
+                    {currentUser?.role ?? "-"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">로그인 유형</p>
+                  <p className="mt-1 font-medium text-slate-900 dark:text-white">
+                    {authProviderLabel}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {showWorkspace ? (
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800 shadow-sm dark:border-slate-800 dark:bg-[#152238] dark:text-slate-100">
             <Tabs
               value={repoImportTab}
               onValueChange={(value) =>
@@ -1728,20 +1797,35 @@ export default function SketchConsole() {
               }
               className="gap-4"
             >
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
                     레포지토리 가져오기
                   </p>
-                  <p className="mt-1 text-xs text-slate-600">
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                     GitHub 계정이면 내 저장소와 주소 입력을 모두 사용할 수 있고,
                     그 외 계정은 주소 입력으로 공개 저장소를 불러올 수 있어요.
                   </p>
                 </div>
-                <TabsList className="grid w-full max-w-md grid-cols-2">
-                  <TabsTrigger value="my-repos">내 GitHub 저장소</TabsTrigger>
-                  <TabsTrigger value="repo-url">저장소 주소 입력</TabsTrigger>
-                </TabsList>
+                <div className="w-full max-w-xl">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                    Import Source
+                  </p>
+                  <TabsList className="grid h-auto w-full grid-cols-2 rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950">
+                    <TabsTrigger
+                      value="my-repos"
+                      className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-500 transition data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm dark:text-slate-400 dark:data-[state=active]:bg-[#152238] dark:data-[state=active]:text-slate-50"
+                    >
+                      내 GitHub 저장소
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="repo-url"
+                      className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-500 transition data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm dark:text-slate-400 dark:data-[state=active]:bg-[#152238] dark:data-[state=active]:text-slate-50"
+                    >
+                      저장소 주소 입력
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
               </div>
 
               <TabsContent value="my-repos">
@@ -1793,11 +1877,11 @@ export default function SketchConsole() {
                     </button>
                   </div>
                 ) : (
-                  <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-5">
-                    <p className="text-sm font-semibold text-slate-900">
+                  <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-5 dark:border-slate-700 dark:bg-slate-950">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
                       GitHub 계정 연결 시 사용 가능
                     </p>
-                    <p className="mt-1 text-sm text-slate-600">
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                       GitHub 계정으로 로그인하면 내 저장소 목록을 바로 불러올 수
                       있어요. 지금은 아래 `저장소 주소 입력` 탭에서 공개 저장소
                       주소를 직접 입력해 사용할 수 있습니다.
@@ -1865,8 +1949,8 @@ export default function SketchConsole() {
               </button>
             </div>
             {githubStatus ? (
-              <div className="mt-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700">
-                <p className="font-semibold text-slate-900">
+              <div className="mt-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                <p className="font-semibold text-slate-900 dark:text-white">
                   GitHub 연결 상태:{" "}
                   {githubStatus.tokenValid && githubStatus.githubApiReachable
                     ? "정상"
@@ -1892,8 +1976,8 @@ export default function SketchConsole() {
               </div>
             ) : null}
             {readiness ? (
-              <div className="mt-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700">
-                <p className="font-semibold text-slate-900">
+              <div className="mt-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                <p className="font-semibold text-slate-900 dark:text-white">
                   서비스 준비도: {readiness.score}점 ({readiness.grade})
                 </p>
                 <ul className="mt-2 list-disc pl-5">
@@ -1907,8 +1991,8 @@ export default function SketchConsole() {
               </div>
             ) : null}
             {analysisHealth ? (
-              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                <p className="font-semibold text-slate-900">
+              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                <p className="font-semibold text-slate-900 dark:text-white">
                   AI 전용 정책:{" "}
                   {analysisHealth.policy.ready ? "정상" : "주의 필요"}
                 </p>
@@ -1944,22 +2028,22 @@ export default function SketchConsole() {
               </div>
             ) : null}
             {repoAnalysis ? (
-              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
                   {repoAnalysis.fullName}
                 </p>
-                <p className="mt-1 text-sm text-slate-700">
+                <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
                   {simplifyAwsWords(repoAnalysis.summary)}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   분석 결과를 아래 기존 탭(아키텍처/테라폼/비용)에 자동
                   반영했습니다.
                 </p>
-                <details className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2">
-                  <summary className="cursor-pointer text-sm font-semibold text-slate-800">
+                <details className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+                  <summary className="cursor-pointer text-sm font-semibold text-slate-800 dark:text-slate-100">
                     AI 분석 리포트 보기
                   </summary>
-                  <div className="mt-3 text-xs text-slate-700">
+                  <div className="mt-3 text-xs text-slate-700 dark:text-slate-300">
                     <p>
                       신뢰도:{" "}
                       <span className="font-semibold">
@@ -1983,10 +2067,10 @@ export default function SketchConsole() {
                   </div>
                   {repoAnalysis.confidenceReasons.length > 0 ? (
                     <>
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         신뢰도 근거
                       </p>
-                      <ul className="mt-1 list-disc pl-5 text-sm text-slate-800">
+                      <ul className="mt-1 list-disc pl-5 text-sm text-slate-800 dark:text-slate-100">
                         {repoAnalysis.confidenceReasons.map((reason) => (
                           <li key={reason}>{reason}</li>
                         ))}
@@ -1995,10 +2079,10 @@ export default function SketchConsole() {
                   ) : null}
                   {repoAnalysis.improvementActions.length > 0 ? (
                     <>
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         정확도 높이기
                       </p>
-                      <ul className="mt-1 list-disc pl-5 text-sm text-slate-800">
+                      <ul className="mt-1 list-disc pl-5 text-sm text-slate-800 dark:text-slate-100">
                         {repoAnalysis.improvementActions.map((action) => (
                           <li key={action}>{action}</li>
                         ))}
@@ -2007,33 +2091,33 @@ export default function SketchConsole() {
                   ) : null}
                   {repoAnalysis.findings.length > 0 ? (
                     <>
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         초보자용 핵심 요약
                       </p>
-                      <ul className="mt-1 list-disc pl-5 text-sm text-slate-800">
+                      <ul className="mt-1 list-disc pl-5 text-sm text-slate-800 dark:text-slate-100">
                         {repoAnalysis.findings.map((finding) => (
                           <li key={finding}>{simplifyAwsWords(finding)}</li>
                         ))}
                       </ul>
                     </>
                   ) : null}
-                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     추천 구성
                   </p>
-                  <p className="mt-1 text-sm text-slate-800">
+                  <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">
                     {repoAnalysis.recommendedStack.join(", ")}
                   </p>
-                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     다음에 할 일
                   </p>
-                  <ul className="mt-1 list-disc pl-5 text-sm text-slate-800">
+                  <ul className="mt-1 list-disc pl-5 text-sm text-slate-800 dark:text-slate-100">
                     {repoAnalysis.deploymentSteps.map((step) => (
                       <li key={step}>{simplifyAwsWords(step)}</li>
                     ))}
                   </ul>
                   {repoAnalysis.risks.length > 0 ? (
                     <>
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         주의할 점
                       </p>
                       <ul className="mt-1 list-disc pl-5 text-sm text-rose-700">
@@ -2048,7 +2132,7 @@ export default function SketchConsole() {
                       <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                         예상 월 비용
                       </p>
-                      <p className="mt-1 text-sm text-slate-800">
+                      <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">
                         {(
                           repoAnalysis.cost.monthlyTotal ??
                           repoAnalysis.cost.monthly_total ??
@@ -2062,14 +2146,14 @@ export default function SketchConsole() {
                     <button
                       type="button"
                       onClick={exportRepoReportMarkdown}
-                      className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800"
+                      className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
                     >
                       리포트 Markdown 내보내기
                     </button>
                     <button
                       type="button"
                       onClick={exportRepoReportPdf}
-                      className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800"
+                      className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
                     >
                       PDF 출력창 열기
                     </button>
@@ -2103,7 +2187,105 @@ export default function SketchConsole() {
               </div>
             ) : null}
           </div>
-          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
+          ) : null}
+          {showSettings ? (
+            <div className="rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <button
+                  type="button"
+                  onClick={loadRepoAnalysisHealth}
+                  disabled={isLoadingHealth}
+                  className="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 disabled:opacity-60"
+                >
+                  {isLoadingHealth ? "확인 중..." : "문제 점검"}
+                </button>
+                <button
+                  type="button"
+                  onClick={loadGitHubConnectionStatus}
+                  disabled={isLoadingGitHubStatus}
+                  className="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 disabled:opacity-60"
+                >
+                  {isLoadingGitHubStatus ? "연결 확인 중..." : "GitHub 연결 점검"}
+                </button>
+                <button
+                  type="button"
+                  onClick={loadReadiness}
+                  disabled={isLoadingReadiness}
+                  className="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 disabled:opacity-60"
+                >
+                  {isLoadingReadiness ? "계산 중..." : "서비스 준비도"}
+                </button>
+              </div>
+              {githubStatus ? (
+                <div className="mt-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                  <p className="font-semibold text-slate-900 dark:text-white">
+                    GitHub 연결 상태:{" "}
+                    {githubStatus.tokenValid && githubStatus.githubApiReachable
+                      ? "정상"
+                      : "점검 필요"}
+                  </p>
+                  <p className="mt-1">
+                    OAuth 설정={String(githubStatus.oauthConfigured)} / 토큰=
+                    {String(githubStatus.tokenPresent)} / 유효=
+                    {String(githubStatus.tokenValid)}
+                  </p>
+                  <p className="mt-1">
+                    계정={githubStatus.accountLogin ?? "-"} / private 접근=
+                    {String(githubStatus.privateRepoAccess)} / 확인 레포수=
+                    {githubStatus.estimatedRepoCount ?? 0}
+                  </p>
+                </div>
+              ) : null}
+              {readiness ? (
+                <div className="mt-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                  <p className="font-semibold text-slate-900 dark:text-white">
+                    서비스 준비도: {readiness.score}점 ({readiness.grade})
+                  </p>
+                  <ul className="mt-2 list-disc pl-5">
+                    {readiness.checklist.map((item) => (
+                      <li key={item.name}>
+                        {item.name}: {item.ok ? "정상" : "개선 필요"} -{" "}
+                        {item.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {analysisHealth ? (
+                <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                  <p className="font-semibold text-slate-900 dark:text-white">
+                    AI 전용 정책:{" "}
+                    {analysisHealth.policy.ready ? "정상" : "주의 필요"}
+                  </p>
+                  <p className="mt-1">
+                    Bedrock={String(analysisHealth.policy.bedrockEnabled)} /
+                    Strict=
+                    {String(analysisHealth.policy.bedrockStrictMode)} / Fallback=
+                    {String(analysisHealth.policy.bedrockFallbackEnabled)}
+                  </p>
+                  <p className="mt-1">
+                    캐시: size {analysisHealth.cache.size}, hits{" "}
+                    {analysisHealth.cache.hits}, misses{" "}
+                    {analysisHealth.cache.misses}
+                  </p>
+                  <p className="mt-1">
+                    최근 실패: {analysisHealth.failures.total}건
+                  </p>
+                  <StageBars
+                    title="실패 Stage 분포"
+                    data={analysisHealth.failures.byStage ?? {}}
+                  />
+                  <StageBars
+                    title="실패 유형 분포"
+                    data={analysisHealth.failures.byType ?? {}}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {showProjects ? (
+          <>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
@@ -2190,7 +2372,7 @@ export default function SketchConsole() {
             </div>
           </div>
 
-          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
@@ -2355,25 +2537,25 @@ export default function SketchConsole() {
             </div>
 
             {compareSummary ? (
-              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
                 <p className="text-sm font-semibold text-slate-900">
                   비교 요약: v{compareSummary.baseSession.versionNo} {"->"} v
                   {compareSummary.targetSession.versionNo}
                 </p>
                 <div className="mt-2 grid gap-2 md:grid-cols-3">
-                  <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                     <p className="text-[11px] text-slate-500">JSON 변경</p>
                     <p className="mt-1 text-lg font-semibold text-slate-900">
                       {compareSummary.jsonDiff.length}건
                     </p>
                   </div>
-                  <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                     <p className="text-[11px] text-slate-500">Terraform 변경</p>
                     <p className="mt-1 text-lg font-semibold text-slate-900">
                       {compareSummary.terraformDiff.changed ? "있음" : "없음"}
                     </p>
                   </div>
-                  <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                     <p className="text-[11px] text-slate-500">월 비용 차이</p>
                     <p className="mt-1 text-lg font-semibold text-slate-900">
                       {formatCurrencyDelta(
@@ -2436,7 +2618,7 @@ export default function SketchConsole() {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="rounded-md border border-slate-200 bg-white p-3">
+                    <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-xs font-semibold text-slate-700">
                           Terraform diff
@@ -2458,7 +2640,7 @@ export default function SketchConsole() {
                       )}
                     </div>
 
-                    <div className="rounded-md border border-slate-200 bg-white p-3">
+                    <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <p className="text-xs font-semibold text-slate-700">
                         비용 비교 상세
                       </p>
@@ -2598,19 +2780,21 @@ export default function SketchConsole() {
               </div>
             ) : null}
           </div>
-
-          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800">
+          </>
+          ) : null}
+          {showDeploy ? (
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
                 AWS 배포/삭제
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-300">
                 선택된 세션의 Terraform 결과를 기준으로 배포하거나 삭제할 수
                 있습니다. 인증은 서버에 등록된 Assume Role을 사용합니다.
               </p>
             </div>
-            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold text-slate-700">
+            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-[#0f172a]">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-100">
                 처음 이용 가이드
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -2621,7 +2805,7 @@ export default function SketchConsole() {
                   }
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                 >
                   IAM 역할 만들기 열기
                 </a>
@@ -2632,12 +2816,12 @@ export default function SketchConsole() {
                   }
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                 >
                   IAM 역할 목록 열기
                 </a>
               </div>
-              <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-slate-600">
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-slate-600 dark:text-slate-300">
                 <li>AWS 계정 ID 12자리를 아래 입력칸에 입력합니다.</li>
                 <li>신뢰 정책 JSON 복사를 누릅니다.</li>
                 <li>IAM 역할 만들기 열기를 누릅니다.</li>
@@ -2646,12 +2830,12 @@ export default function SketchConsole() {
                 <li>3단계에서 역할 이름 stc-deploy-role 입력 → 생성</li>
                 <li>생성된 역할 상세에서 ARN 복사 → 이 페이지 Role ARN 입력 → AWS 연결 설정 저장</li>
               </ol>
-              <div className="mt-2 rounded-md border border-slate-200 bg-white p-2 text-[11px] text-slate-600">
+              <div className="mt-2 rounded-md border border-slate-200 bg-white p-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-[#152238] dark:text-slate-200">
                 {isLoadingDeployGuide ? (
                   <p>가이드를 불러오는 중입니다...</p>
                 ) : (
                   <>
-                    <p className="font-semibold text-slate-700">1) AWS 계정 ID 입력</p>
+                    <p className="font-semibold text-slate-700 dark:text-slate-50">1) AWS 계정 ID 입력</p>
                     <input
                       type="text"
                       value={awsAccountIdInput}
@@ -2659,12 +2843,12 @@ export default function SketchConsole() {
                         setAwsAccountIdInput(event.target.value)
                       }
                       placeholder="AWS 계정 ID 12자리 (예: 123456789012)"
-                      className="mt-1 h-8 w-full rounded-md border border-slate-300 px-2 text-[11px] text-slate-700"
+                      className="mt-1 h-8 w-full rounded-md border border-slate-300 px-2 text-[11px] text-slate-700 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                     />
                     <p className="mt-1">
                       계정 ID 확인 위치: AWS 콘솔 우측 상단 계정 메뉴 {"->"} 계정 ID
                     </p>
-                    <p className="mt-2 font-semibold text-slate-700">2) 신뢰 정책 JSON 복사</p>
+                    <p className="mt-2 font-semibold text-slate-700 dark:text-slate-50">2) 신뢰 정책 JSON 복사</p>
                     <p className="mt-1">
                       생성될 Principal:{" "}
                       <code>{effectivePrincipalArn || "계정 ID를 먼저 입력하세요"}</code>
@@ -2686,7 +2870,7 @@ export default function SketchConsole() {
                           );
                         }}
                         disabled={!effectiveTrustPolicyJson}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                       >
                         신뢰 정책 JSON 복사
                       </button>
@@ -2709,7 +2893,7 @@ export default function SketchConsole() {
                 onChange={(event) => setAwsRoleArn(event.target.value)}
                 className="h-9 rounded-md border border-slate-300 px-3 text-xs md:col-span-2"
               />
-              <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
                 {isLoadingAwsConfig
                   ? "AWS 연결 상태를 불러오는 중입니다."
                   : isAwsConfigured
@@ -2722,7 +2906,7 @@ export default function SketchConsole() {
                   void saveAwsDeployConfig();
                 }}
                 disabled={isSavingAwsConfig}
-                className="h-9 rounded-md border border-blue-300 bg-blue-50 px-3 text-xs font-medium text-blue-700 disabled:opacity-50"
+                className="h-9 rounded-md border border-blue-300 bg-blue-50 px-3 text-xs font-medium text-blue-700 disabled:opacity-50 dark:border-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
               >
                 {isSavingAwsConfig ? "저장 중..." : "AWS 연결 설정 저장"}
               </button>
@@ -2732,7 +2916,7 @@ export default function SketchConsole() {
                   void clearAwsDeployConfig();
                 }}
                 disabled={isClearingAwsConfig || !isAwsConfigured}
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 disabled:opacity-50"
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
               >
                 {isClearingAwsConfig ? "해제 중..." : "AWS 연결 설정 해제"}
               </button>
@@ -2741,10 +2925,10 @@ export default function SketchConsole() {
               <p
                 className={`mt-2 text-xs ${
                   awsConfigMessageTone === "success"
-                    ? "text-emerald-700"
+                    ? "text-emerald-700 dark:text-emerald-400"
                     : awsConfigMessageTone === "error"
-                      ? "text-rose-700"
-                      : "text-slate-600"
+                      ? "text-rose-700 dark:text-rose-400"
+                      : "text-slate-600 dark:text-slate-300"
                 }`}
               >
                 {awsConfigMessage}
@@ -2761,7 +2945,7 @@ export default function SketchConsole() {
                   isDeploying ||
                   !isAwsConfigured
                 }
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50"
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-200 dark:text-slate-950"
               >
                 {isDeploying ? "배포 중..." : "배포 실행"}
               </button>
@@ -2775,13 +2959,13 @@ export default function SketchConsole() {
                   isDestroying ||
                   !isAwsConfigured
                 }
-                className="h-9 rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 disabled:opacity-50"
+                className="h-9 rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 disabled:opacity-50 dark:border-rose-800 dark:bg-rose-500/15 dark:text-rose-300"
               >
                 {isDestroying ? "삭제 중..." : "리소스 삭제"}
               </button>
             </div>
             {currentSessionId ? (
-              <p className="mt-2 text-[11px] text-slate-500">
+              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
                 삭제 확인코드(자동 적용):{" "}
                 <code>
                   DESTROY-
@@ -2791,13 +2975,13 @@ export default function SketchConsole() {
             ) : null}
 
             <div className="mt-3">
-              <p className="text-xs font-semibold text-slate-700">배포 이력</p>
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-100">배포 이력</p>
               {isLoadingDeployments ? (
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   배포 이력을 불러오는 중입니다.
                 </p>
               ) : deployments.length === 0 ? (
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   아직 배포/삭제 이력이 없습니다.
                 </p>
               ) : (
@@ -2805,17 +2989,17 @@ export default function SketchConsole() {
                   {deployments.map((item) => (
                     <div
                       key={item.deploymentId}
-                      className="rounded-md border border-slate-200 bg-slate-50 p-2"
+                      className="rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950"
                     >
-                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] dark:text-slate-200">
                         <span className="rounded bg-slate-900 px-1.5 py-0.5 text-white">
                           {item.action}
                         </span>
-                        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-slate-700">
+                        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
                           {item.status}
                         </span>
-                        <span className="text-slate-500">{item.region}</span>
-                        <span className="text-slate-500">
+                        <span className="text-slate-500 dark:text-slate-300">{item.region}</span>
+                        <span className="text-slate-500 dark:text-slate-300">
                           elapsed:{" "}
                           {formatElapsed(
                             item.startedAt,
@@ -2823,7 +3007,7 @@ export default function SketchConsole() {
                             deploymentNowMs,
                           )}
                         </span>
-                        <span className="text-slate-400">{item.createdAt}</span>
+                        <span className="text-slate-400 dark:text-slate-500">{item.createdAt}</span>
                       </div>
                       {item.log ? (
                         <pre className="mt-2 max-h-40 overflow-auto rounded bg-slate-950 p-2 text-[10px] text-slate-100">
@@ -2836,8 +3020,8 @@ export default function SketchConsole() {
               )}
             </div>
           </div>
-
-          {analysisCoverage !== null && analysisCoverage < 0.75 ? (
+          ) : null}
+          {showWorkspace && analysisCoverage !== null && analysisCoverage < 0.75 ? (
             <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               요구사항 반영률이 낮습니다 ({Math.round(analysisCoverage * 100)}
               %). 미반영 힌트:{" "}
@@ -2847,6 +3031,7 @@ export default function SketchConsole() {
             </div>
           ) : null}
 
+          {showWorkspace ? (
           <div className="grid gap-6 lg:grid-cols-[420px_1fr] xl:grid-cols-[480px_1fr]">
             <ControlPanel
               onGenerate={handleGenerate}
@@ -2866,6 +3051,7 @@ export default function SketchConsole() {
               assumptions={costAssumptions}
             />
           </div>
+          ) : null}
         </main>
       </div>
     </>

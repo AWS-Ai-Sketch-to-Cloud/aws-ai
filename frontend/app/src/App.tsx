@@ -1,6 +1,7 @@
-import { BrowserRouter as Router, Route, Routes } from "react-router";
+import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import { Toaster } from "./components/ui/toaster";
+import AppLayout from "./layout/AppLayout";
 import LoginPage from "./pages/Auth/LoginPage";
 import SocialCallbackPage from "./pages/Auth/SocialCallbackPage";
 import SignupPage from "./pages/Auth/SignupPage";
@@ -16,7 +17,13 @@ export default function App() {
         <Route path="/" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/auth/social/callback" element={<SocialCallbackPage />} />
-        <Route path="/dashboard" element={<SketchConsole />} />
+        <Route path="/dashboard" element={<Navigate to="/workspace" replace />} />
+        <Route element={<AppLayout />}>
+          <Route path="/workspace" element={<SketchConsole page="workspace" />} />
+          <Route path="/projects" element={<SketchConsole page="projects" />} />
+          <Route path="/deploy" element={<SketchConsole page="deploy" />} />
+          <Route path="/settings" element={<SketchConsole page="settings" />} />
+        </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Router>

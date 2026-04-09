@@ -82,6 +82,11 @@ export default function SocialCallbackPage() {
         accessToken: decoded.accessToken,
         refreshToken: decoded.refreshToken,
         apiBaseUrl: API_BASE_URL,
+        authProvider: decoded.provider as
+          | "github"
+          | "google"
+          | "kakao"
+          | "naver",
       });
 
       toast({
@@ -123,6 +128,11 @@ export default function SocialCallbackPage() {
         accessToken: login.accessToken,
         refreshToken: login.refreshToken,
         apiBaseUrl: API_BASE_URL,
+        authProvider: signupPayload.provider as
+          | "github"
+          | "google"
+          | "kakao"
+          | "naver",
       });
 
       toast({
@@ -155,14 +165,14 @@ export default function SocialCallbackPage() {
         title="소셜 로그인 처리 중 | Sketch-to-Cloud"
         description="Sketch-to-Cloud 소셜 로그인 콜백"
       />
-      <div className="relative min-h-screen overflow-hidden bg-[#FDFDFD] px-6 py-10 text-[#202020]">
+      <div className="relative min-h-screen overflow-hidden bg-[#FDFDFD] px-6 py-10 text-[#202020] dark:bg-[#0f172a] dark:text-slate-100">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,153,0,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(73,205,223,0.18),_transparent_28%)]" />
         <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-3xl items-center justify-center">
-          <section className="w-full rounded-3xl border border-[#E7E7E7] bg-white px-8 py-10 text-center shadow-2xl shadow-[#49CDDF]/10 backdrop-blur">
+          <section className="w-full rounded-3xl border border-[#E7E7E7] bg-white px-8 py-10 text-center shadow-2xl shadow-[#49CDDF]/10 backdrop-blur dark:border-slate-800 dark:bg-[#152238]">
             <h1 className="text-3xl font-semibold">
               {errorMessage ? "로그인에 실패했습니다." : "소셜 로그인 처리 중입니다."}
             </h1>
-            <p className="mt-4 text-sm leading-6 text-gray-500">
+            <p className="mt-4 text-sm leading-6 text-gray-500 dark:text-slate-300">
               {errorMessage
                 ? errorMessage
                 : signupPayload
@@ -176,19 +186,19 @@ export default function SocialCallbackPage() {
       <Dialog open={Boolean(signupPayload)}>
         <DialogContent
           showCloseButton={false}
-          className="rounded-3xl border border-[#E7E7E7] bg-white p-8"
+          className="rounded-3xl border border-[#E7E7E7] bg-white p-8 dark:border-slate-800 dark:bg-[#152238]"
         >
           <DialogHeader className="text-left">
-            <DialogTitle className="text-2xl font-semibold text-[#202020]">
+            <DialogTitle className="text-2xl font-semibold text-[#202020] dark:text-slate-50">
               이 계정으로 계속 진행할까요?
             </DialogTitle>
-            <DialogDescription className="mt-2 text-sm leading-6 text-gray-600">
+            <DialogDescription className="mt-2 text-sm leading-6 text-gray-600 dark:text-slate-300">
               아직 등록되지 않은 {signupPayload?.provider.toUpperCase()} 계정입니다.
               계속 진행하면 이 정보로 자동 가입 후 바로 로그인합니다.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-2xl border border-[#E7E7E7] bg-[#FAFAFA] px-4 py-4 text-sm text-gray-700">
+          <div className="rounded-2xl border border-[#E7E7E7] bg-[#FAFAFA] px-4 py-4 text-sm text-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
             <p>이메일: {signupPayload?.email || "미제공"}</p>
             <p className="mt-2">표시 이름: {signupPayload?.displayName || "미제공"}</p>
           </div>
@@ -198,7 +208,7 @@ export default function SocialCallbackPage() {
               type="button"
               onClick={goBackToLogin}
               disabled={isContinuing}
-              className="inline-flex h-12 items-center justify-center rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition hover:border-gray-300 disabled:opacity-60"
+              className="inline-flex h-12 items-center justify-center rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition hover:border-gray-300 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
             >
               아니요, 돌아가기
             </button>

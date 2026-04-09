@@ -12,6 +12,7 @@ export type StoredAuthSession = {
   refreshToken: string;
   user: AuthUser;
   apiBaseUrl: string;
+  authProvider?: "password" | "github" | "google" | "kakao" | "naver";
 };
 
 export type SocialCallbackPayload = {
@@ -33,6 +34,7 @@ export function saveAuthSession(payload: {
   accessToken: string;
   refreshToken: string;
   apiBaseUrl: string;
+  authProvider?: "password" | "github" | "google" | "kakao" | "naver";
 }) {
   const session: StoredAuthSession = {
     loginId: payload.user.loginId,
@@ -40,9 +42,26 @@ export function saveAuthSession(payload: {
     refreshToken: payload.refreshToken,
     user: payload.user,
     apiBaseUrl: payload.apiBaseUrl,
+    authProvider: payload.authProvider ?? "password",
   };
 
   sessionStorage.setItem("stc-auth", JSON.stringify(session));
+}
+
+export function getStoredAuthSession(): StoredAuthSession | null {
+  try {
+    const raw = sessionStorage.getItem("stc-auth");
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw) as StoredAuthSession;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuthSession() {
+  sessionStorage.removeItem("stc-auth");
 }
 
 function decodeEncodedPayload<T>(encodedPayload: string): T {
