@@ -1,5 +1,14 @@
 ﻿import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
+import {
+  Boxes,
+  Cloud,
+  FolderKanban,
+  GitBranch,
+  Rocket,
+  Settings2,
+  Sparkles,
+} from "lucide-react";
 import { ControlPanel } from "../../components/dashboard/control-panel";
 import { ResultPanel } from "../../components/dashboard/result-panel";
 import {
@@ -431,6 +440,7 @@ export default function SketchConsole({
 }: {
   page?: ConsolePage;
 }) {
+  const [currentPage, setCurrentPage] = useState<ConsolePage>(page);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<
     "idle" | "analyzing" | "complete" | "optimized"
@@ -533,10 +543,10 @@ export default function SketchConsole({
 
   const getAuth = (): StoredAuthSession | null => getStoredAuthSession();
   const currentUser = getAuth()?.user ?? null;
-  const showWorkspace = page === "workspace";
-  const showProjects = page === "projects";
-  const showDeploy = page === "deploy";
-  const showSettings = page === "settings";
+  const showWorkspace = currentPage === "workspace";
+  const showProjects = currentPage === "projects";
+  const showDeploy = currentPage === "deploy";
+  const showSettings = currentPage === "settings";
   const pageTitleMap: Record<ConsolePage, string> = {
     workspace: "Workspace",
     projects: "Projects",
@@ -563,6 +573,10 @@ export default function SketchConsole({
         return "ID 로그인";
     }
   })();
+
+  useEffect(() => {
+    setCurrentPage(page);
+  }, [page]);
 
   const applyUserError = (fallback: string, error: unknown) => {
     const raw = error instanceof Error ? error.message : fallback;
@@ -1734,20 +1748,158 @@ export default function SketchConsole({
   return (
     <>
       <PageMeta
-        title={`${pageTitleMap[page]} | Sketch-to-Cloud`}
-        description={pageDescriptionMap[page]}
+        title={`${pageTitleMap[currentPage]} | Sketch-to-Cloud`}
+        description={pageDescriptionMap[currentPage]}
       />
-      <div className="min-h-[calc(100vh-8rem)]">
-        <main className="space-y-4">
+      <div className="min-h-screen bg-[linear-gradient(180deg,#f7fbff_0%,#ecf3ff_100%)]">
+        <div className="mx-auto flex w-full max-w-[1600px] gap-6 px-4 py-6 sm:px-6 lg:px-8">
+          <aside className="sticky top-6 hidden h-[calc(100vh-3rem)] w-[280px] shrink-0 overflow-hidden rounded-[2rem] border border-white/70 bg-[#0f1728] p-5 text-white shadow-[0_24px_80px_rgba(15,23,40,0.18)] xl:flex xl:flex-col">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/75">
+                <Sparkles className="h-3.5 w-3.5 text-[#58e1c1]" />
+                New console shell
+              </div>
+              <div className="mt-6 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
+                  <Cloud className="h-6 w-6 text-[#58e1c1]" />
+                </div>
+                <div>
+                  <p className="text-lg font-semibold">Sketch-to-Cloud</p>
+                  <p className="text-sm text-white/55">AI infrastructure studio</p>
+                </div>
+              </div>
+            </div>
+
+            <nav className="mt-8 space-y-2">
+              {[
+                { key: "workspace" as const, label: "Workspace", icon: Boxes },
+                { key: "projects" as const, label: "Projects", icon: FolderKanban },
+                { key: "deploy" as const, label: "Deploy", icon: Rocket },
+                { key: "settings" as const, label: "Settings", icon: Settings2 },
+              ].map((item) => {
+                const Icon = item.icon;
+                const active = currentPage === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setCurrentPage(item.key)}
+                    className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition ${
+                      active
+                        ? "bg-white text-[#122033] shadow-[0_18px_40px_rgba(255,255,255,0.08)]"
+                        : "text-white/70 hover:bg-white/8 hover:text-white"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="text-sm font-semibold">{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="mt-auto rounded-[1.5rem] border border-white/12 bg-white/8 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+                Active account
+              </p>
+              <p className="mt-3 text-base font-semibold">
+                {currentUser?.displayName ?? "Guest"}
+              </p>
+              <p className="mt-1 text-sm text-white/55">
+                {currentUser?.email ?? "로그인 정보 없음"}
+              </p>
+              <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-[#122033]">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#65748b]">
+                  Login provider
+                </p>
+                <p className="mt-2 text-sm font-semibold">{authProviderLabel}</p>
+              </div>
+            </div>
+          </aside>
+
+          <main className="min-w-0 flex-1 space-y-5">
+            <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/88 px-6 py-6 shadow-[0_24px_80px_rgba(72,123,255,0.12)] backdrop-blur sm:px-8">
+              <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+                <div>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-[#d9e4f2] bg-[#f8fbff] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#487bff]">
+                    <GitBranch className="h-3.5 w-3.5" />
+                    {pageTitleMap[currentPage]}
+                  </div>
+                  <h1 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-[#122033] sm:text-4xl">
+                    {currentPage === "workspace" &&
+                      "AI가 요구사항을 읽고 AWS 설계와 코드로 연결합니다."}
+                    {currentPage === "projects" &&
+                      "프로젝트 이력과 버전 흐름을 탐색하는 공간입니다."}
+                    {currentPage === "deploy" &&
+                      "배포 준비부터 실행 이력까지 한 화면에서 관리합니다."}
+                    {currentPage === "settings" &&
+                      "연결 상태와 분석 준비도를 운영 관점에서 점검합니다."}
+                  </h1>
+                  <p className="mt-4 max-w-3xl text-sm leading-7 text-[#65748b] sm:text-base">
+                    {pageDescriptionMap[currentPage]}
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-2 xl:hidden">
+                    {[
+                      { key: "workspace" as const, label: "Workspace" },
+                      { key: "projects" as const, label: "Projects" },
+                      { key: "deploy" as const, label: "Deploy" },
+                      { key: "settings" as const, label: "Settings" },
+                    ].map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setCurrentPage(item.key)}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                          currentPage === item.key
+                            ? "bg-[#122033] text-white"
+                            : "border border-[#d9e4f2] bg-white text-[#314257]"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                  <div className="rounded-[1.5rem] border border-[#d9e4f2] bg-[#f8fbff] p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[#65748b]">
+                      Session
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-[#122033]">
+                      {currentSessionId ? currentSessionId.slice(0, 8) : "아직 없음"}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.5rem] border border-[#d9e4f2] bg-[#f8fbff] p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[#65748b]">
+                      Projects
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-[#122033]">
+                      {projects.length.toLocaleString()} loaded
+                    </p>
+                  </div>
+                  <div className="rounded-[1.5rem] border border-[#d9e4f2] bg-[#f8fbff] p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[#65748b]">
+                      Monthly estimate
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-[#122033]">
+                      {monthlyTotal !== null
+                        ? `${monthlyTotal.toLocaleString()} ${currency ?? "KRW"}`
+                        : "계산 전"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
           {errorMessage ? (
-            <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-[1.5rem] border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
               {errorRequestId ? (
                 <details className="mt-2 text-xs text-red-600">
                   <summary className="cursor-pointer">
                     문제가 계속되면 이 코드로 문의하세요
                   </summary>
-                  ?? ??: {errorRequestId}
+                  요청 ID: {errorRequestId}
                 </details>
               ) : null}
             </div>
@@ -3052,7 +3204,8 @@ export default function SketchConsole({
             />
           </div>
           ) : null}
-        </main>
+          </main>
+        </div>
       </div>
     </>
   );

@@ -135,3 +135,33 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes heroFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotateX(0deg) rotateZ(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotateX(3deg) rotateZ(-2deg);
+  }
+}
+
+@keyframes heroOrbit {
+  0%,
+  100% {
+    transform: translateZ(220px) rotateY(-18deg) translateY(0);
+  }
+  50% {
+    transform: translateZ(235px) rotateY(-12deg) translateY(-12px);
+  }
+}
+
+@keyframes heroDrift {
+  0%,
+  100% {
+    transform: translateZ(200px) translateY(0) rotateY(0deg);
+  }
+  50% {
+    transform: translateZ(225px) translateY(-10px) rotateY(4deg);
+  }
+}

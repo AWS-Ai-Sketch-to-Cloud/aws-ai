@@ -1,7 +1,13 @@
 import { FormEvent, ReactNode, useState } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import type { IconProp } from "@fortawesome/fontawesome-svg-core";
 import { Link, useNavigate } from "react-router";
+import {
+  ArrowRight,
+  Bot,
+  Cloud,
+  Info,
+  Sparkles,
+  Workflow,
+} from "lucide-react";
 import PageMeta from "../../components/common/PageMeta";
 import { toast } from "../../hooks/use-toast";
 import { getApiErrorMessage } from "../../lib/api-error";
@@ -43,12 +49,10 @@ const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   "http://127.0.0.1:8000";
 
-const githubInfoIcon = ["fas", "circle-info"] as IconProp;
-
 const SOCIAL_BUTTONS: SocialButton[] = [
   {
     key: "naver",
-    title: "네이버 로그인",
+    title: "네이버로 로그인",
     brandColor: "#03A94D",
     iconColor: "#FFFFFF",
     borderColor: "#03A94D",
@@ -66,7 +70,7 @@ const SOCIAL_BUTTONS: SocialButton[] = [
   },
   {
     key: "google",
-    title: "구글 로그인",
+    title: "Google로 로그인",
     brandColor: "#FFFFFF",
     iconColor: "#202124",
     borderColor: "#747775",
@@ -97,7 +101,7 @@ const SOCIAL_BUTTONS: SocialButton[] = [
   },
   {
     key: "kakao",
-    title: "카카오톡 로그인",
+    title: "카카오로 로그인",
     brandColor: "#FEE500",
     iconColor: "#191919",
     borderColor: "#E7CF00",
@@ -116,8 +120,8 @@ const SOCIAL_BUTTONS: SocialButton[] = [
   },
   {
     key: "github",
-    title: "깃허브 로그인",
-    tooltip: "깃허브로 로그인하면 레포지토리를 가져올 수 있어요.",
+    title: "GitHub로 로그인",
+    tooltip: "GitHub 저장소를 바로 불러오려면 GitHub 로그인이 가장 빠릅니다.",
     brandColor: "#24292F",
     iconColor: "#FFFFFF",
     borderColor: "#24292F",
@@ -136,14 +140,30 @@ const SOCIAL_BUTTONS: SocialButton[] = [
   },
 ];
 
+const FEATURE_ITEMS = [
+  {
+    icon: Bot,
+    title: "AI 설계 해석",
+    description: "요구사항과 스케치를 읽고 AWS 아키텍처 초안을 자동 생성합니다.",
+  },
+  {
+    icon: Workflow,
+    title: "Terraform 생성",
+    description: "검토 가능한 IaC 코드와 리소스 구성을 한 흐름으로 정리합니다.",
+  },
+  {
+    icon: Cloud,
+    title: "배포 준비 단축",
+    description: "인프라 검토, 예산 감각, 배포 전 체크포인트를 한 화면에서 봅니다.",
+  },
+];
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTooltip, setActiveTooltip] = useState<SocialProvider | null>(
-    null,
-  );
+  const [activeTooltip, setActiveTooltip] = useState<SocialProvider | null>(null);
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
 
   const applyLoginApiError = (status: number, message: string) => {
@@ -153,12 +173,15 @@ export default function LoginPage() {
     }
 
     if (status === 422) {
-      if (message.includes("아이디")) {
+      if (message.includes("아이디") || message.toLowerCase().includes("login")) {
         setFieldErrors({ loginId: message });
         return;
       }
 
-      if (message.includes("비밀번호")) {
+      if (
+        message.includes("비밀번호") ||
+        message.toLowerCase().includes("password")
+      ) {
         setFieldErrors({ password: message });
         return;
       }
@@ -177,7 +200,7 @@ export default function LoginPage() {
     const nextErrors: LoginFieldErrors = {};
 
     if (!loginId.trim()) {
-      nextErrors.loginId = "아이디를 입력해 주세요.";
+      nextErrors.loginId = "로그인 ID를 입력해 주세요.";
     }
 
     if (!password) {
@@ -199,9 +222,7 @@ export default function LoginPage() {
         body: JSON.stringify({ loginId, password }),
       });
 
-      const data = (await res.json().catch(() => ({}))) as
-        | LoginResponse
-        | unknown;
+      const data = (await res.json().catch(() => ({}))) as LoginResponse | unknown;
 
       if (!res.ok) {
         const message = getApiErrorMessage(data, "로그인에 실패했습니다.");
@@ -215,14 +236,13 @@ export default function LoginPage() {
         accessToken: login.accessToken,
         refreshToken: login.refreshToken,
         apiBaseUrl: API_BASE_URL,
-        authProvider: "password",
       });
       toast({
         title: "로그인 완료",
-        description: "대시보드로 이동합니다.",
+        description: "워크스페이스로 이동합니다.",
         variant: "success",
       });
-      navigate("/dashboard");
+      navigate("/workspace");
     } catch (error) {
       setFieldErrors({
         auth:
@@ -241,52 +261,102 @@ export default function LoginPage() {
     <>
       <PageMeta
         title="로그인 | Sketch-to-Cloud"
-        description="Sketch-to-Cloud 로그인"
+        description="Sketch-to-Cloud 로그인 페이지"
       />
-      <div className="relative min-h-screen bg-[#FDFDFD] px-6 py-10 text-[#202020] dark:bg-[#0f172a] dark:text-slate-100">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,153,0,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(73,205,223,0.18),_transparent_28%)]" />
-        <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
-          <div className="grid w-full gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-            <section className="hidden rounded-3xl border border-[#E7E7E7] bg-white/80 p-10 backdrop-blur dark:border-slate-800 dark:bg-[#152238]/90 lg:block">
-              <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#49CDDF]">
-                Sketch to Cloud
-              </p>
-              <h1 className="mt-6 max-w-xl text-5xl font-semibold leading-tight">
-                디자인부터 텍스트까지 AWS 연계 파이프라인으로 바로 연결합니다.
-              </h1>
+      <div className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#f7fbff_0%,#ecf3ff_100%)] text-[#122033]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(72,123,255,0.2),_transparent_30%),radial-gradient(circle_at_85%_20%,_rgba(32,201,151,0.16),_transparent_24%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(18,32,51,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(18,32,51,0.04)_1px,transparent_1px)] bg-[size:72px_72px] [mask-image:radial-gradient(circle_at_center,black,transparent_85%)]" />
+
+        <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center px-6 py-10 sm:px-8 lg:px-10">
+          <div className="grid w-full gap-8 xl:grid-cols-[1.08fr_0.92fr]">
+            <section className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-[#0f1728] px-7 py-8 text-white shadow-[0_24px_80px_rgba(15,23,40,0.24)] sm:px-10 sm:py-10">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(72,123,255,0.42),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(32,201,151,0.22),_transparent_26%)]" />
+              <div className="relative">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm text-white/80 backdrop-blur">
+                  <Sparkles className="h-4 w-4 text-[#58e1c1]" />
+                  New infrastructure workflow
+                </div>
+
+                <h1 className="mt-6 max-w-2xl text-4xl font-semibold leading-tight sm:text-5xl">
+                  아이디어를 입력하면
+                  <br />
+                  배포 가능한 AWS 설계 흐름으로 이어집니다.
+                </h1>
+                <p className="mt-5 max-w-xl text-base leading-7 text-white/72 sm:text-lg">
+                  Sketch-to-Cloud는 스케치, 요구사항, 저장소 정보를 바탕으로
+                  인프라 구조와 Terraform 초안을 연결하는 AI 워크벤치입니다.
+                </p>
+
+                <div className="mt-8 space-y-4">
+                  {FEATURE_ITEMS.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div
+                        key={item.title}
+                        className="rounded-2xl border border-white/12 bg-white/6 p-5 backdrop-blur"
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
+                            <Icon className="h-5 w-5 text-[#58e1c1]" />
+                          </div>
+                          <div>
+                            <h2 className="text-lg font-semibold text-white">{item.title}</h2>
+                            <p className="mt-2 text-sm leading-6 text-white/68">
+                              {item.description}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </section>
 
-            <section className="relative z-10 rounded-3xl border border-[#E7E7E7] bg-white p-8 text-gray-900 shadow-2xl shadow-[#49CDDF]/10 backdrop-blur dark:border-slate-800 dark:bg-[#152238] dark:text-slate-100 sm:p-10">
+            <section className="relative rounded-[2rem] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(72,123,255,0.14)] backdrop-blur sm:p-8">
+              <div className="absolute inset-x-0 top-0 h-1 rounded-t-[2rem] bg-[linear-gradient(90deg,#487bff_0%,#58e1c1_100%)]" />
               <div className="mx-auto max-w-md">
-                <h2 className="mt-4 text-3xl font-semibold">로그인</h2>
-                <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-slate-300">
-                  테스트 계정으로 빠르게 시작하거나 기존 ID로 로그인할 수
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#edf3ff] text-[#487bff]">
+                    <Cloud className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#487bff]">
+                      Sketch-to-Cloud
+                    </p>
+                    <p className="text-sm text-[#65748b]">AI 기반 AWS 설계 워크스페이스</p>
+                  </div>
+                </div>
+
+                <h2 className="mt-8 text-3xl font-semibold tracking-[-0.03em] text-[#122033]">
+                  로그인
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-[#65748b]">
+                  소셜 계정으로 빠르게 시작하거나 기존 로그인 ID로 계속 진행할 수
                   있습니다.
                 </p>
 
                 <form className="mt-8 space-y-5" onSubmit={onSubmit}>
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
+                    <span className="mb-2 block text-sm font-medium text-[#314257]">
                       로그인 ID
                     </span>
                     <input
-                      className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
+                      className={`h-12 w-full rounded-2xl border bg-[#f9fbff] px-4 text-sm outline-none transition ${
                         fieldErrors.loginId
                           ? "border-red-400 focus:border-red-500"
-                          : "border-gray-200 focus:border-[#49CDDF] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+                          : "border-[#d9e4f2] focus:border-[#487bff]"
                       }`}
                       value={loginId}
                       onChange={(event) => {
-                        setLoginId(
-                          event.target.value.replace(/\s/g, "").toLowerCase(),
-                        );
+                        setLoginId(event.target.value.replace(/\s/g, "").toLowerCase());
                         setFieldErrors((current) => ({
                           ...current,
                           loginId: undefined,
                           auth: undefined,
                         }));
                       }}
-                      placeholder="아이디 입력"
+                      placeholder="아이디를 입력하세요"
                       autoCapitalize="none"
                       autoCorrect="off"
                     />
@@ -298,15 +368,15 @@ export default function LoginPage() {
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
+                    <span className="mb-2 block text-sm font-medium text-[#314257]">
                       비밀번호
                     </span>
                     <input
                       type="password"
-                      className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
+                      className={`h-12 w-full rounded-2xl border bg-[#f9fbff] px-4 text-sm outline-none transition ${
                         fieldErrors.password || fieldErrors.auth
                           ? "border-red-400 focus:border-red-500"
-                          : "border-gray-200 focus:border-[#49CDDF] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+                          : "border-[#d9e4f2] focus:border-[#487bff]"
                       }`}
                       value={password}
                       onChange={(event) => {
@@ -317,7 +387,7 @@ export default function LoginPage() {
                           auth: undefined,
                         }));
                       }}
-                      placeholder="비밀번호 입력"
+                      placeholder="비밀번호를 입력하세요"
                     />
                     {fieldErrors.password ? (
                       <p className="mt-2 text-sm font-medium text-red-500">
@@ -333,17 +403,18 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#FF9900] px-4 text-sm font-semibold text-white transition hover:bg-[#e68a00] disabled:opacity-60"
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#122033] px-4 text-sm font-semibold text-white transition hover:bg-[#1b2c44] disabled:opacity-60"
                   >
                     {isSubmitting ? "로그인 중..." : "로그인"}
+                    {!isSubmitting ? <ArrowRight className="h-4 w-4" /> : null}
                   </button>
 
                   <div className="flex items-center gap-3 py-1">
-                    <div className="h-px flex-1 bg-gray-200" />
-                    <span className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-400 dark:text-slate-500">
-                      소셜 로그인
+                    <div className="h-px flex-1 bg-[#d9e4f2]" />
+                    <span className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7f8ca0]">
+                      Social
                     </span>
-                    <div className="h-px flex-1 bg-gray-200" />
+                    <div className="h-px flex-1 bg-[#d9e4f2]" />
                   </div>
 
                   <div className="flex items-center justify-center gap-5 py-1">
@@ -352,15 +423,11 @@ export default function LoginPage() {
                         key={socialButton.key}
                         className={`relative ${activeTooltip === socialButton.key ? "z-[200]" : ""}`}
                         onMouseEnter={() =>
-                          setActiveTooltip(
-                            socialButton.tooltip ? socialButton.key : null,
-                          )
+                          setActiveTooltip(socialButton.tooltip ? socialButton.key : null)
                         }
                         onMouseLeave={() => setActiveTooltip(null)}
                         onFocus={() =>
-                          setActiveTooltip(
-                            socialButton.tooltip ? socialButton.key : null,
-                          )
+                          setActiveTooltip(socialButton.tooltip ? socialButton.key : null)
                         }
                         onBlur={() => setActiveTooltip(null)}
                       >
@@ -369,7 +436,7 @@ export default function LoginPage() {
                           onClick={() => startSocialLogin(socialButton.key)}
                           aria-label={socialButton.title}
                           title={socialButton.title}
-                          className={`relative inline-flex h-12 w-12 items-center justify-center border transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#49CDDF] focus-visible:ring-offset-2 ${socialButton.buttonClassName ?? ""}`}
+                          className={`relative inline-flex h-12 w-12 items-center justify-center border transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#487bff] focus-visible:ring-offset-2 ${socialButton.buttonClassName ?? ""}`}
                           style={{
                             backgroundColor: socialButton.brandColor,
                             color: socialButton.iconColor,
@@ -384,59 +451,43 @@ export default function LoginPage() {
                             {socialButton.logo}
                           </span>
                         </button>
+
                         {socialButton.key === "github" ? (
-                          <span
-                            className="pointer-events-none absolute z-[300] flex h-5 w-5 items-center justify-center rounded-full border border-white bg-black text-white"
-                            style={{ right: "-10px", top: "-10px" }}
-                          >
-                            <FontAwesomeIcon icon={githubInfoIcon} className="text-[13px]" />
+                          <span className="pointer-events-none absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border border-white bg-[#122033] text-white shadow-lg">
+                            <Info className="h-3.5 w-3.5" />
                           </span>
                         ) : null}
-                        {socialButton.tooltip &&
-                        activeTooltip === socialButton.key ? (
-                          <span
-                            className="pointer-events-none absolute z-[220] flex w-72 flex-col items-center rounded-md px-5 py-4 text-center text-white shadow-2xl"
-                            style={{
-                              backgroundColor: "#000000",
-                              opacity: 1,
-                              top: "-22px",
-                              left: "100%",
-                              transform: "translate(-50%, -100%)",
-                            }}
-                          >
+
+                        {socialButton.tooltip && activeTooltip === socialButton.key ? (
+                          <span className="pointer-events-none absolute left-1/2 top-0 z-[220] flex w-72 -translate-x-1/2 -translate-y-[calc(100%+1rem)] flex-col items-center rounded-2xl bg-[#122033] px-5 py-4 text-center text-white shadow-2xl">
                             <span className="text-sm font-semibold leading-6 text-white">
-                              깃허브로 로그인하면
-                              <br />
-                              레포지토리를 가져올 수 있어요
+                              GitHub로 로그인하면 저장소 연동이 바로 가능합니다.
                             </span>
-                            <span className="mt-2 text-xs leading-5 text-white">
-                              프로젝트 연동에 필요한 저장소를
-                              <br />더 쉽게 불러올 수 있습니다.
+                            <span className="mt-2 text-xs leading-5 text-white/75">
+                              프로젝트 구조 분석과 리포지토리 연결 흐름을 빠르게 시작할
+                              수 있습니다.
                             </span>
-                            <span
-                              className="absolute h-4 w-4"
-                              style={{
-                                backgroundColor: "#000000",
-                                bottom: "-8px",
-                                left: "50%",
-                                transform: "translateX(-50%) rotate(45deg)",
-                              }}
-                            />
+                            <span className="absolute -bottom-2 h-4 w-4 rotate-45 bg-[#122033]" />
                           </span>
                         ) : null}
                       </div>
                     ))}
                   </div>
 
-                  <p className="mt-4 text-center text-sm text-gray-600 dark:text-slate-300">
-                    아직 회원이 아니신가요?{" "}
+                  <div className="rounded-2xl border border-[#d9e4f2] bg-[#f8fbff] px-4 py-4">
+                    <p className="text-sm font-semibold text-[#122033]">처음 사용하는 계정인가요?</p>
+                    <p className="mt-1 text-sm leading-6 text-[#65748b]">
+                      회원가입 후 로그인하면 워크스페이스에서 아키텍처 생성 흐름을 바로
+                      사용할 수 있습니다.
+                    </p>
                     <Link
                       to="/signup"
-                      className="font-semibold text-[#49CDDF] transition hover:text-[#2db7ca]"
+                      className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#487bff] transition hover:text-[#2f64ef]"
                     >
-                      회원가입
+                      회원가입으로 이동
+                      <ArrowRight className="h-4 w-4" />
                     </Link>
-                  </p>
+                  </div>
                 </form>
               </div>
             </section>
